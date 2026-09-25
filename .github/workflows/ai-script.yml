@@ -8,61 +8,82 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl
-
       - name: Install Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve > /tmp/ollama.log 2>&1 &
           sleep 5
 
-      - name: Download AI model
+      - name: Download small AI model
         run: |
-          ollama pull qwen2.5:1.5b-instruct
+          ollama pull qwen2.5:0.5b-instruct
 
-      - name: Generate Hindi Short script
+      - name: Generate Hindi Short
+        timeout-minutes: 5
         run: |
-          ollama run qwen2.5:1.5b-instruct '
-          तुम एक प्रोफेशनल भारतीय YouTube Shorts script writer हो।
+          cat > /tmp/request.json <<'EOF'
+          {
+            "model": "qwen2.5:0.5b-instruct",
+            "system": "तुम भारत के YouTube Shorts के लिए छोटे और मजेदार संवाद लिखने वाले लेखक हो। केवल दिए गए नियमों का पालन करो।",
+            "prompt": "एक 25 से 30 सेकंड का मजेदार Hindi YouTube Short लिखो। विषय: दो भारतीय बच्चे यह साबित करने की कोशिश कर रहे हैं कि कौन ज्यादा समझदार है। केवल हिंदी में लिखो। केवल दो पात्र हों: बच्चा 1 और बच्चा 2। शुरुआत तुरंत मजेदार hook से करो। संवाद छोटे और natural रखो। अंत में unexpected funny punchline दो। कोई narrator नहीं। कोई stage direction नहीं। कोई explanation नहीं। केवल 8 से 12 dialogue lines लिखो। हर line इसी format में हो: बच्चा 1: ... या बच्चा 2: ...",
+            "stream": false,
+            "options": {
+              "temperature": 0.7,
+              "top_p": 0.9,
+              "num_predict": 180,
+              "repeat_penalty": 1.2
+            }
+          }
+          EOF
 
-          एक मजेदार और वायरल Hindi YouTube Short की script बनाओ।
+          curl -sS http://127.0.0.1:11434/api/generate \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/request.json \
+            > /tmp/response.json
 
-          विषय:
-          दो भारतीय बच्चे आपस में मजेदार बहस कर रहे हैं कि कौन ज्यादा समझदार है।
+          python3 - <<'PY'
+          import json
+          import sys
 
-          नियम:
-          - पूरी बातचीत केवल हिंदी में हो।
-          - कोई English dialogue नहीं।
-          - अवधि लगभग 25 से 35 सेकंड हो।
-          - पहले 2 सेकंड में बहुत मजबूत और मजेदार hook हो।
-          - केवल दो characters हों: बच्चा 1 और बच्चा 2।
-          - बातचीत natural और मजेदार लगे।
-          - छोटे और तेज dialogue हों।
-          - बीच में funny misunderstanding या unexpected twist हो।
-          - अंत में एक जोरदार punchline हो।
-          - कोई narrator नहीं।
-          - कोई stage directions नहीं।
-          - कोई explanation नहीं।
-          - कोई captions या subtitles की जानकारी नहीं।
-          - केवल बोलने वाला dialogue लिखो।
+          with open("/tmp/response.json", encoding="utf-8") as f:
+              data = json.load(f)
 
-          इस format में लिखो:
+          text = data.get("response", "").strip()
 
-          बच्चा 1: ...
-          बच्चा 2: ...
-          बच्चा 1: ...
-          बच्चा 2: ...
+          if not text:
+              print("ERROR: AI returned an empty response.")
+              sys.exit(1)
 
-          अब केवल final dialogue दो।
-          ' > script.txt
+          # Basic quality checks
+          lines = [x.strip() for x in text.splitlines() if x.strip()]
 
-      - name: Show generated Hindi script
-        run: |
-          echo "================================"
-          echo "      HINDI AI SHORT SCRIPT"
-          echo "================================"
-          cat script.txt
-          echo "================================"
+          if len(lines) < 6:
+              print("ERROR: Script is too short.")
+              print(text)
+              sys.exit(1)
+
+          if len(lines) > 14:
+              lines = lines[:14]
+
+          # Reject obvious repetition
+          unique = len(set(lines))
+          if unique < len(lines) * 0.65:
+              print("ERROR: AI produced repetitive dialogue.")
+              print(text)
+              sys.exit(1)
+
+          with open("script.txt", "w", encoding="utf-8") as f:
+              f.write("\n".join(lines))
+
+          print("===== FINAL HINDI SHORT =====")
+          print()
+          print("\n".join(lines))
+          print()
+          print("=============================")
+          PY
+
+      - name: Save script
+        uses: actions/upload-artifact@v4
+        with:
+          name: hindi-short-script
+          path: script.txt
