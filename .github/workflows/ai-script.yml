@@ -1,0 +1,33 @@
+name: AI Shorts Generator
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Download tiny local AI model
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve > /tmp/ollama.log 2>&1 &
+          sleep 5
+          ollama pull qwen2.5:0.5b-instruct
+
+      - name: Generate AI script
+        run: |
+          ollama run qwen2.5:0.5b-instruct \
+          "Create a funny 30-second YouTube Shorts script with a strong hook in the first 2 seconds. Use two characters. Return only the dialogue." \
+          > script.txt
+
+      - name: Show generated script
+        run: |
+          echo "===== AI SHORT SCRIPT ====="
+          cat script.txt
+          echo "==========================="
