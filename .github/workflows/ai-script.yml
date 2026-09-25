@@ -11,23 +11,58 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y curl
 
-      - name: Download tiny local AI model
+      - name: Install Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve > /tmp/ollama.log 2>&1 &
           sleep 5
-          ollama pull qwen2.5:0.5b-instruct
 
-      - name: Generate AI script
+      - name: Download AI model
         run: |
-          ollama run qwen2.5:0.5b-instruct \
-          "Create a funny 30-second YouTube Shorts script with a strong hook in the first 2 seconds. Use two characters. Return only the dialogue." \
-          > script.txt
+          ollama pull qwen2.5:1.5b-instruct
 
-      - name: Show generated script
+      - name: Generate Hindi Short script
         run: |
-          echo "===== AI SHORT SCRIPT ====="
+          ollama run qwen2.5:1.5b-instruct '
+          तुम एक प्रोफेशनल भारतीय YouTube Shorts script writer हो।
+
+          एक मजेदार और वायरल Hindi YouTube Short की script बनाओ।
+
+          विषय:
+          दो भारतीय बच्चे आपस में मजेदार बहस कर रहे हैं कि कौन ज्यादा समझदार है।
+
+          नियम:
+          - पूरी बातचीत केवल हिंदी में हो।
+          - कोई English dialogue नहीं।
+          - अवधि लगभग 25 से 35 सेकंड हो।
+          - पहले 2 सेकंड में बहुत मजबूत और मजेदार hook हो।
+          - केवल दो characters हों: बच्चा 1 और बच्चा 2।
+          - बातचीत natural और मजेदार लगे।
+          - छोटे और तेज dialogue हों।
+          - बीच में funny misunderstanding या unexpected twist हो।
+          - अंत में एक जोरदार punchline हो।
+          - कोई narrator नहीं।
+          - कोई stage directions नहीं।
+          - कोई explanation नहीं।
+          - कोई captions या subtitles की जानकारी नहीं।
+          - केवल बोलने वाला dialogue लिखो।
+
+          इस format में लिखो:
+
+          बच्चा 1: ...
+          बच्चा 2: ...
+          बच्चा 1: ...
+          बच्चा 2: ...
+
+          अब केवल final dialogue दो।
+          ' > script.txt
+
+      - name: Show generated Hindi script
+        run: |
+          echo "================================"
+          echo "      HINDI AI SHORT SCRIPT"
+          echo "================================"
           cat script.txt
-          echo "==========================="
+          echo "================================"
