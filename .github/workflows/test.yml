@@ -1,0 +1,17 @@
+name: AI Shorts Automation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 12 * * *"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Test automation
+        run: |
+          echo "AI Shorts automation started!"
+          echo "Date: $(date)"
+          echo "Next step: connect AI generation."
