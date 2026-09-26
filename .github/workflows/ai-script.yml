@@ -9,9 +9,14 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
 
     steps:
+
+      # ============================================================
+      # 1. INSTALL OLLAMA
+      # ============================================================
+
       - name: Install Ollama
         shell: bash
         run: |
@@ -23,21 +28,34 @@ jobs:
           echo $! > /tmp/ollama.pid
 
           echo "Waiting for Ollama..."
+
           for i in {1..30}; do
             if curl -sf http://127.0.0.1:11434/api/tags >/dev/null; then
               echo "Ollama is ready."
               break
             fi
+
             sleep 2
           done
 
           curl -sf http://127.0.0.1:11434/api/tags >/dev/null
 
+
+      # ============================================================
+      # 2. DOWNLOAD SMALL AI MODEL
+      # ============================================================
+
       - name: Download Qwen 1.5B
         shell: bash
         run: |
           set -euo pipefail
+
           ollama pull qwen2.5:1.5b-instruct
+
+
+      # ============================================================
+      # 3. GENERATE HINDI SHORT SCRIPT
+      # ============================================================
 
       - name: Generate final Hindi Short
         shell: bash
@@ -46,32 +64,54 @@ jobs:
           set -euo pipefail
 
           cat > /tmp/generate_short.py <<'PY'
+
           import json
           import random
           import re
-          import sys
-          import time
           import urllib.request
-          import urllib.error
+
 
           MODEL = "qwen2.5:1.5b-instruct"
           API = "http://127.0.0.1:11434/api/chat"
 
-          # Curated story situations keep the small local model focused.
+
+          # ------------------------------------------------------------
+          # STORY IDEAS
+          # ------------------------------------------------------------
+
           STORIES = [
               "एक बच्चा दावा करता है कि वह बहुत बुद्धिमान है, लेकिन उसका सबसे बड़ा सबूत उल्टा उसके खिलाफ चला जाता है।",
+
               "दो बच्चे बहस करते हैं कि होमवर्क किसने ज्यादा अच्छा किया, फिर पता चलता है कि दोनों ने एक ही गलती की है।",
+
               "एक बच्चा दूसरे को अपनी बहुत बड़ी चाल बताता है, लेकिन सामने वाला तुरंत उसकी चाल समझ जाता है।",
+
               "दो बच्चे परीक्षा के बाद अपनी उत्तर-पुस्तिका की तुलना करते हैं और एक बहुत मजेदार गलती पकड़ लेते हैं।",
+
               "एक बच्चा कहता है कि वह भविष्य देख सकता है और दूसरा बच्चा उसे एक ऐसा सवाल पूछ देता है जिसका जवाब वह नहीं दे पाता।",
+
               "एक बच्चा खुद को बहुत चालाक समझता है और दूसरे बच्चे से एक आसान पहेली पूछता है, लेकिन खुद ही फंस जाता है।",
+
               "दो बच्चे तय करते हैं कि आज से वे बिल्कुल झूठ नहीं बोलेंगे, फिर पहला ही वाक्य उन्हें मुश्किल में डाल देता है।",
+
               "एक बच्चा दावा करता है कि उसने पढ़ाई का सबसे आसान तरीका खोज लिया है, लेकिन उसका तरीका सुनकर दूसरा बच्चा हैरान रह जाता है।",
+
               "दो बच्चे तय करते हैं कि जो ज्यादा स्मार्ट होगा वही स्कूल का बॉस बनेगा, लेकिन अंत में दोनों को टीचर की एक बात याद आती है।",
-              "एक बच्चा अपनी नई 'जादुई' ट्रिक दिखाता है और दूसरा बच्चा उसकी असली वजह बता देता है।"
+
+              "एक बच्चा अपनी नई जादुई ट्रिक दिखाता है और दूसरा बच्चा उसकी असली वजह बता देता है।"
           ]
 
+
+          # ------------------------------------------------------------
+          # RANDOM STORY
+          # ------------------------------------------------------------
+
           story = random.choice(STORIES)
+
+
+          # ------------------------------------------------------------
+          # AI INSTRUCTIONS
+          # ------------------------------------------------------------
 
           system_prompt = """
           तुम भारतीय YouTube Shorts के लिए प्रोफेशनल Hindi comedy writer हो।
@@ -79,6 +119,7 @@ jobs:
           तुम्हारा काम केवल छोटा, बोलने योग्य और मजेदार संवाद लिखना है।
 
           बहुत महत्वपूर्ण:
+
           - केवल देवनागरी हिंदी में लिखो।
           - अंग्रेज़ी शब्दों से बचो।
           - केवल दो पात्र: बच्चा 1 और बच्चा 2।
@@ -93,6 +134,7 @@ jobs:
           - केवल dialogue।
           - एक ही वाक्य या बात को दोहराना मना है।
           """
+
 
           user_prompt = f"""
           इस कहानी की स्थिति पर 25 से 35 सेकंड का YouTube Short लिखो:
@@ -109,8 +151,10 @@ jobs:
           केवल अंतिम संवाद दो।
           """
 
+
           payload = {
               "model": MODEL,
+
               "messages": [
                   {
                       "role": "system",
@@ -121,7 +165,9 @@ jobs:
                       "content": user_prompt.strip()
                   }
               ],
+
               "stream": False,
+
               "options": {
                   "temperature": 0.65,
                   "top_p": 0.9,
@@ -130,29 +176,80 @@ jobs:
               }
           }
 
+
+          # ------------------------------------------------------------
+          # CALL OLLAMA
+          # ------------------------------------------------------------
+
           def call_model():
-              body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+              body = json.dumps(
+                  payload,
+                  ensure_ascii=False
+              ).encode("utf-8")
 
               request = urllib.request.Request(
                   API,
                   data=body,
-                  headers={"Content-Type": "application/json"},
+                  headers={
+                      "Content-Type": "application/json"
+                  },
                   method="POST"
               )
 
-              with urllib.request.urlopen(request, timeout=120) as response:
-                  result = json.loads(response.read().decode("utf-8"))
+              with urllib.request.urlopen(
+                  request,
+                  timeout=120
+              ) as response:
 
-              return result.get("message", {}).get("content", "").strip()
+                  result = json.loads(
+                      response.read().decode("utf-8")
+                  )
+
+              return result.get(
+                  "message",
+                  {}
+              ).get(
+                  "content",
+                  ""
+              ).strip()
+
+
+          # ------------------------------------------------------------
+          # CLEAN AI OUTPUT
+          # ------------------------------------------------------------
 
           def clean(text):
+
               text = text.replace("\r", "")
-              text = re.sub(r"```(?:text|txt)?", "", text, flags=re.IGNORECASE)
-              text = text.replace("```", "")
-              text = re.sub(r"^(अंतिम उत्तर|संवाद)\s*:\s*", "", text.strip())
+
+              text = re.sub(
+                  r"```(?:text|txt)?",
+                  "",
+                  text,
+                  flags=re.IGNORECASE
+              )
+
+              text = text.replace(
+                  "```",
+                  ""
+              )
+
+              text = re.sub(
+                  r"^(अंतिम उत्तर|संवाद)\s*:\s*",
+                  "",
+                  text.strip()
+              )
+
               return text.strip()
 
+
+          # ------------------------------------------------------------
+          # VALIDATE SCRIPT
+          # ------------------------------------------------------------
+
           def validate(text):
+
               text = clean(text)
 
               raw_lines = [
@@ -161,64 +258,133 @@ jobs:
                   if line.strip()
               ]
 
-              # Remove accidental numbering/bullets.
               lines = []
-              for line in raw_lines:
-                  line = re.sub(r"^\s*[-•*]\s*", "", line)
-                  line = re.sub(r"^\s*\d+[\.\)]\s*", "", line)
-                  lines.append(line.strip())
 
+              for line in raw_lines:
+
+                  line = re.sub(
+                      r"^\s*[-•*]\s*",
+                      "",
+                      line
+                  )
+
+                  line = re.sub(
+                      r"^\s*\d+[\.\)]\s*",
+                      "",
+                      line
+                  )
+
+                  lines.append(
+                      line.strip()
+                  )
+
+
+              # 8-12 lines
               if not (8 <= len(lines) <= 12):
                   return None
 
-              speaker_pattern = re.compile(r"^(बच्चा 1|बच्चा 2):\s*\S+")
+
+              speaker_pattern = re.compile(
+                  r"^(बच्चा 1|बच्चा 2):\s*\S+"
+              )
+
 
               for line in lines:
+
                   if not speaker_pattern.match(line):
                       return None
 
-              # Must alternate speakers.
+
+              # Alternate speakers
               for i, line in enumerate(lines):
-                  expected = "बच्चा 1" if i % 2 == 0 else "बच्चा 2"
-                  if not line.startswith(expected + ":"):
+
+                  expected = (
+                      "बच्चा 1"
+                      if i % 2 == 0
+                      else "बच्चा 2"
+                  )
+
+                  if not line.startswith(
+                      expected + ":"
+                  ):
                       return None
 
-              # Reject excessive English characters.
-              english_chars = len(re.findall(r"[A-Za-z]", text))
-              hindi_chars = len(re.findall(r"[\u0900-\u097F]", text))
+
+              # Mostly Hindi
+              english_chars = len(
+                  re.findall(
+                      r"[A-Za-z]",
+                      text
+                  )
+              )
+
+              hindi_chars = len(
+                  re.findall(
+                      r"[\u0900-\u097F]",
+                      text
+                  )
+              )
 
               if hindi_chars < 40:
                   return None
 
-              if english_chars > max(8, hindi_chars // 12):
+              if english_chars > max(
+                  8,
+                  hindi_chars // 12
+              ):
                   return None
 
-              # Reject duplicated lines.
+
+              # No duplicate lines
               normalized = [
-                  re.sub(r"\s+", " ", x.lower()).strip()
+                  re.sub(
+                      r"\s+",
+                      " ",
+                      x.lower()
+                  ).strip()
                   for x in lines
               ]
 
-              if len(set(normalized)) < len(normalized):
+              if len(set(normalized)) < len(
+                  normalized
+              ):
                   return None
 
-              # Reject obvious repetition of the same short phrase.
+
+              # No repeated line
               counts = {}
+
               for line in normalized:
-                  counts[line] = counts.get(line, 0) + 1
+
+                  counts[line] = (
+                      counts.get(line, 0) + 1
+                  )
 
               if max(counts.values()) > 1:
                   return None
 
-              # Approximate spoken length.
-              words = re.findall(r"[\u0900-\u097F]+", text)
+
+              # Reasonable word count
+              words = re.findall(
+                  r"[\u0900-\u097F]+",
+                  text
+              )
+
               if not (45 <= len(words) <= 120):
                   return None
 
+
               return "\n".join(lines)
 
+
+          # ------------------------------------------------------------
+          # BUILT-IN FALLBACK
+          # ------------------------------------------------------------
+
           def fallback():
+
               fallback_scripts = [
+
                   [
                       "बच्चा 1: भाई, मैं तुमसे ज्यादा समझदार हूँ!",
                       "बच्चा 2: अच्छा? इसका सबूत क्या है?",
@@ -229,6 +395,7 @@ jobs:
                       "बच्चा 1: हाँ, पड़ोसी की कॉपी देखकर।",
                       "बच्चा 2: मतलब तू समझदार नहीं, पड़ोसी समझदार है!"
                   ],
+
                   [
                       "बच्चा 1: आज मैंने टीचर को भी चौंका दिया!",
                       "बच्चा 2: क्या किया?",
@@ -239,6 +406,7 @@ jobs:
                       "बच्चा 1: होमवर्क मेरी कक्षा का नहीं है।",
                       "बच्चा 2: भाई, तूने पढ़ाई नहीं, पड़ोसी की मदद की है!"
                   ],
+
                   [
                       "बच्चा 1: मैं भविष्य देख सकता हूँ।",
                       "बच्चा 2: सच में? कल क्या होगा?",
@@ -250,62 +418,142 @@ jobs:
                       "बच्चा 2: नहीं भाई, सवाल तूने ही बताया था!"
                   ]
               ]
-              return "\n".join(random.choice(fallback_scripts))
+
+              return "\n".join(
+                  random.choice(
+                      fallback_scripts
+                  )
+              )
+
+
+          # ------------------------------------------------------------
+          # GENERATE
+          # ------------------------------------------------------------
 
           final_script = None
 
-          # First attempt.
-          try:
-              output = call_model()
-              final_script = validate(output)
-          except Exception as exc:
-              print(f"First generation failed: {exc}")
 
-          # One controlled retry.
+          try:
+
+              output = call_model()
+
+              final_script = validate(
+                  output
+              )
+
+          except Exception as exc:
+
+              print(
+                  f"First generation failed: {exc}"
+              )
+
+
+          # ------------------------------------------------------------
+          # RETRY
+          # ------------------------------------------------------------
+
           if final_script is None:
+
               retry_payload = payload.copy()
+
               retry_payload["messages"] = [
+
                   {
                       "role": "system",
                       "content": (
-                          "केवल 8 से 10 बहुत छोटी हिंदी dialogue lines लिखो। "
-                          "हर line क्रम से बच्चा 1 और बच्चा 2 की हो। "
+                          "केवल 8 से 10 बहुत छोटी "
+                          "हिंदी dialogue lines लिखो। "
+                          "हर line क्रम से बच्चा 1 "
+                          "और बच्चा 2 की हो। "
                           "आखिरी line मजेदार punchline हो। "
                           "किसी line को repeat मत करो। "
                           "केवल dialogue दो।"
                       )
                   },
+
                   {
                       "role": "user",
                       "content": user_prompt.strip()
                   }
               ]
+
               payload = retry_payload
 
-              try:
-                  output = call_model()
-                  final_script = validate(output)
-              except Exception as exc:
-                  print(f"Retry failed: {exc}")
 
-          # Guaranteed safe fallback.
+              try:
+
+                  output = call_model()
+
+                  final_script = validate(
+                      output
+                  )
+
+              except Exception as exc:
+
+                  print(
+                      f"Retry failed: {exc}"
+                  )
+
+
+          # ------------------------------------------------------------
+          # FALLBACK
+          # ------------------------------------------------------------
+
           if final_script is None:
-              print("AI output did not pass quality checks.")
-              print("Using built-in Hindi fallback so the pipeline remains valid.")
+
+              print(
+                  "AI output did not pass quality checks."
+              )
+
+              print(
+                  "Using built-in Hindi fallback "
+                  "so the pipeline remains valid."
+              )
+
               final_script = fallback()
 
-          with open("script.txt", "w", encoding="utf-8") as f:
-              f.write(final_script + "\n")
+
+          # ------------------------------------------------------------
+          # SAVE SCRIPT
+          # ------------------------------------------------------------
+
+          with open(
+              "script.txt",
+              "w",
+              encoding="utf-8"
+          ) as f:
+
+              f.write(
+                  final_script + "\n"
+              )
+
 
           print()
-          print("========================================")
-          print("        FINAL HINDI SHORT SCRIPT")
-          print("========================================")
+          print(
+              "========================================"
+          )
+          print(
+              "        FINAL HINDI SHORT SCRIPT"
+          )
+          print(
+              "========================================"
+          )
+
           print(final_script)
-          print("========================================")
+
+          print(
+              "========================================"
+          )
+
           PY
 
+
           python3 /tmp/generate_short.py
+
+
+      # ============================================================
+      # 4. VALIDATE SCRIPT
+      # ============================================================
 
       - name: Validate final script
         shell: bash
@@ -324,9 +572,168 @@ jobs:
 
           echo "Final script passed validation."
 
-      - name: Save final script
+
+      # ============================================================
+      # 5. INSTALL PIPER + FFMPEG
+      # ============================================================
+
+      - name: Install Hindi voice engine
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+          python3 -m pip install --upgrade pip
+          python3 -m pip install piper-tts
+
+
+      # ============================================================
+      # 6. DOWNLOAD HINDI VOICES
+      # ============================================================
+
+      - name: Download Hindi voices
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p voices
+
+          python3 -m piper.download_voices \
+            --data-dir voices \
+            hi_IN-pratham-medium
+
+          python3 -m piper.download_voices \
+            --data-dir voices \
+            hi_IN-priyamvada-medium
+
+
+      # ============================================================
+      # 7. GENERATE CHARACTER VOICES
+      # ============================================================
+
+      - name: Generate Hindi character voices
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p audio
+
+          i=0
+
+          while IFS= read -r line || [ -n "$line" ]; do
+
+            if [[ "$line" == बच्चा\ 1:* ]]; then
+
+              speaker="pratham"
+              text="${line#बच्चा 1:}"
+
+            elif [[ "$line" == बच्चा\ 2:* ]]; then
+
+              speaker="priyamvada"
+              text="${line#बच्चा 2:}"
+
+            else
+
+              continue
+
+            fi
+
+
+            text="$(echo "$text" | sed 's/^[[:space:]]*//')"
+
+
+            if [ -z "$text" ]; then
+              continue
+            fi
+
+
+            output="audio/$(printf '%03d' "$i").wav"
+
+
+            if [ "$speaker" = "pratham" ]; then
+
+              python3 -m piper \
+                --data-dir voices \
+                -m hi_IN-pratham-medium \
+                -f "$output" \
+                -- "$text"
+
+            else
+
+              python3 -m piper \
+                --data-dir voices \
+                -m hi_IN-priyamvada-medium \
+                -f "$output" \
+                -- "$text"
+
+            fi
+
+
+            i=$((i + 1))
+
+          done < script.txt
+
+
+          if [ "$i" -lt 2 ]; then
+
+            echo "ERROR: Not enough dialogue audio was generated."
+
+            exit 1
+
+          fi
+
+
+          echo "Generated $i dialogue audio files."
+
+
+      # ============================================================
+      # 8. COMBINE ALL DIALOGUES
+      # ============================================================
+
+      - name: Combine dialogue audio
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          : > audio/concat.txt
+
+
+          for file in audio/*.wav; do
+
+            echo "file '$PWD/$file'" >> audio/concat.txt
+
+          done
+
+
+          ffmpeg \
+            -y \
+            -f concat \
+            -safe 0 \
+            -i audio/concat.txt \
+            -c:a pcm_s16le \
+            voice.wav
+
+
+          echo "Final voice duration:"
+
+          ffprobe \
+            -v error \
+            -show_entries format=duration \
+            -of default=noprint_wrappers=1:nokey=1 \
+            voice.wav
+
+
+      # ============================================================
+      # 9. SAVE SCRIPT + FINAL VOICE
+      # ============================================================
+
+      - name: Save Hindi script and voice
         uses: actions/upload-artifact@v4
         with:
-          name: hindi-short-script
-          path: script.txt
+          name: hindi-short-audio
+          path: |
+            script.txt
+            voice.wav
           retention-days: 1
