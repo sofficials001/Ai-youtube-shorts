@@ -1,4 +1,4 @@
-name: AI Hindi Toddler Shorts
+name: AI Quick Hindi Toddler Shorts
 
 on:
   workflow_dispatch:
@@ -27,7 +27,7 @@ jobs:
       - name: Install Ollama
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           curl -fsSL https://ollama.com/install.sh | sh
 
@@ -38,7 +38,7 @@ jobs:
 
           for i in {1..30}; do
             if curl -sf http://127.0.0.1:11434/api/tags >/dev/null; then
-              echo "Ollama ready."
+              echo "Ollama is ready."
               break
             fi
             sleep 2
@@ -47,25 +47,26 @@ jobs:
           curl -sf http://127.0.0.1:11434/api/tags >/dev/null
 
       # ==========================================================
-      # 3. DOWNLOAD SMALL LOCAL AI MODEL
+      # 3. DOWNLOAD QWEN
       # ==========================================================
 
-      - name: Download Qwen
+      - name: Download Qwen 1.5B
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           ollama pull qwen2.5:1.5b-instruct
 
       # ==========================================================
-      # 4. GENERATE UNIQUE HINDI STORY
+      # 4. GENERATE SHORT VIRAL-STYLE JOKE
       # ==========================================================
 
-      - name: Generate Hindi toddler comedy
+      - name: Generate quick Hindi toddler joke
         shell: bash
+        timeout-minutes: 4
         run: |
 
-          cat > generate.py <<'PY'
+          cat > generate_joke.py <<'PY'
 
           import json
           import random
@@ -75,83 +76,132 @@ jobs:
           API = "http://127.0.0.1:11434/api/chat"
           MODEL = "qwen2.5:1.5b-instruct"
 
-          IDEAS = [
-              "बच्चा दुकान पर जाकर ऐसी चीज मांगता है जिसे देखकर दुकानदार हैरान हो जाता है।",
-              "बच्चा पापा से बहुत मासूम तरीके से महंगी चीज मांगता है।",
-              "बच्चा खाना खाने से मना करता है लेकिन खाना देखते ही अपना फैसला बदल देता है।",
-              "बच्चा किसी बड़े आदमी की बात का गलत मतलब समझ लेता है।",
-              "बच्चा खुद को बहुत बड़ा समझता है लेकिन उसकी मासूम हरकत पोल खोल देती है।",
-              "बच्चा अपनी छोटी समस्या को दुनिया की सबसे बड़ी समस्या समझता है।",
-              "बच्चा बाजार में ऐसी मासूम बात बोलता है कि सब हंस पड़ते हैं।",
-              "बच्चा अपने खिलौने को अपना सबसे अच्छा दोस्त मानकर उसकी मजेदार वजह बताता है।",
-              "बच्चा शरारत करने के बाद बहुत मासूम बनकर बचने की कोशिश करता है।",
-              "बच्चा पापा से पैसे मांगने के लिए अजीब लेकिन मासूम logic देता है।",
-              "बच्चा कहता है कि उसे भूख नहीं है और फिर खाने के सामने बैठ जाता है।",
-              "बच्चा किसी बड़े को बहुत मासूम सलाह देता है।"
+          # ======================================================
+          # RANDOM TOPIC
+          # ======================================================
+
+          TOPICS = [
+              "पैसे",
+              "चॉकलेट",
+              "बिस्कुट",
+              "खिलौना",
+              "मोबाइल",
+              "आइसक्रीम",
+              "स्कूल",
+              "सोना",
+              "खाना",
+              "टीवी",
+              "जन्मदिन",
+              "पापा के पैसे",
+              "मम्मी की डांट",
+              "बाजार",
+              "पिज्जा",
+              "खिलौने की दुकान"
           ]
 
-          idea = random.choice(IDEAS)
+          topic = random.choice(TOPICS)
 
-          prompt = f"""
-          तुम Hindi YouTube Shorts comedy writer हो।
+          # ======================================================
+          # MAIN PROMPT
+          # ======================================================
 
-          एक ORIGINAL funny toddler comedy short लिखो।
+          system_prompt = """
+          तुम Hindi YouTube Shorts के लिए professional
+          comedy writer हो।
 
-          STORY IDEA:
-          {idea}
+          तुम्हें बहुत छोटा और extremely funny toddler joke
+          लिखना है।
 
           MAIN CHARACTER:
 
           fictional 3-year-old Indian toddler.
 
-          बच्चा:
-          - बहुत छोटा
-          - थोड़ा chubby
-          - गोल प्यारा चेहरा
-          - बड़ी expressive brown eyes
-          - छोटे काले बाल
-          - innocent personality
-          - realistic toddler language
+          CHARACTER:
+
+          - 3 years old
+          - very small
+          - slightly chubby
+          - round cute face
+          - large expressive brown eyes
+          - short black hair
+          - adorable innocent expression
+          - realistic toddler behavior
+
+          बच्चे की भाषा बिल्कुल सरल हो।
+
+          बच्चा बहुत sophisticated या adult जैसी बातें
+          नहीं करेगा।
+
+          JOKE STRUCTURE:
+
+          HOOK
+          ↓
+          SETUP
+          ↓
+          PUNCHLINE
+
+          REQUIREMENTS:
+
+          - केवल 3 या 4 dialogue lines
+          - लगभग 6-12 seconds
+          - पहली line तुरंत attention पकड़ने वाली हो
+          - कोई लंबा setup नहीं
+          - joke जल्दी समझ आना चाहिए
+          - innocent toddler humor
+          - अंतिम line सबसे funny हो
+          - natural Hindi
+          - conversational Hindi
+          - easy words
+          - no narrator
+          - no stage directions
+          - no explanation
+          - no hashtags
+          - no captions
+          - no subtitles
+          - no celebrity
+          - no real person
+
+          बच्चा 1 = मुख्य toddler
+
+          बच्चा 2 = parent/shopkeeper/older person/
+          another child
+
+          केवल dialogue लिखो।
+          """
+
+          user_prompt = f"""
+          Topic: {topic}
+
+          एक ORIGINAL 6-12 second Hindi toddler joke लिखो।
+
+          उदाहरण जैसा structure चाहिए:
+
+          बच्चा 1: ...
+          बच्चा 2: ...
+          बच्चा 1: ...
+
+          या:
+
+          बच्चा 1: ...
+          बच्चा 2: ...
+          बच्चा 1: ...
+          बच्चा 2: ...
 
           IMPORTANT:
 
-          बच्चा सच में 3 साल का लगे।
+          पहली line hook हो।
 
-          उसकी भाषा:
-          - छोटी
-          - सरल
-          - मासूम
-          - natural
-          - बच्चों जैसी
+          आखिरी line punchline हो।
 
-          बड़े आदमी जैसी complicated बातें नहीं।
+          joke एक ही simple idea पर आधारित हो।
 
-          FORMAT:
+          toddler की innocence से comedy पैदा हो।
 
-          बच्चा 1: ...
-          बच्चा 2: ...
-          बच्चा 1: ...
-          बच्चा 2: ...
+          Topic को naturally इस्तेमाल करो।
 
-          RULES:
+          बहुत ज्यादा explanation मत करो।
 
-          - 8 से 12 dialogue lines
-          - 20 से 35 seconds
-          - पहली line strong hook
-          - fast comedy
-          - natural conversation
-          - innocent misunderstanding
-          - अंतिम line strong punchline
-          - Hindi
-          - narrator नहीं
-          - stage directions नहीं
-          - celebrity names नहीं
-          - real people नहीं
-          - हर run में नया idea
-          - captions नहीं
-          - subtitles नहीं
-
-          केवल dialogue दो।
+          केवल dialogue।
           """
 
           payload = {
@@ -159,36 +209,37 @@ jobs:
               "messages": [
                   {
                       "role": "system",
-                      "content": "केवल natural Hindi toddler comedy dialogue लिखो।"
+                      "content": system_prompt.strip()
                   },
                   {
                       "role": "user",
-                      "content": prompt
+                      "content": user_prompt.strip()
                   }
               ],
               "stream": False,
               "options": {
-                  "temperature": 0.85,
-                  "top_p": 0.92,
-                  "repeat_penalty": 1.25,
-                  "num_predict": 220
+                  "temperature": 0.90,
+                  "top_p": 0.95,
+                  "repeat_penalty": 1.30,
+                  "num_predict": 120
               }
           }
 
-          data = json.dumps(
-              payload,
-              ensure_ascii=False
-          ).encode("utf-8")
+          def call_model():
 
-          request = urllib.request.Request(
-              API,
-              data=data,
-              headers={
-                  "Content-Type": "application/json"
-              }
-          )
+              body = json.dumps(
+                  payload,
+                  ensure_ascii=False
+              ).encode("utf-8")
 
-          try:
+              request = urllib.request.Request(
+                  API,
+                  data=body,
+                  headers={
+                      "Content-Type": "application/json"
+                  },
+                  method="POST"
+              )
 
               with urllib.request.urlopen(
                   request,
@@ -199,62 +250,289 @@ jobs:
                       response.read().decode("utf-8")
                   )
 
-              output = result["message"]["content"].strip()
+              return result.get(
+                  "message",
+                  {}
+              ).get(
+                  "content",
+                  ""
+              ).strip()
+
+          def clean(text):
+
+              text = text.replace(
+                  "\r",
+                  ""
+              )
+
+              text = re.sub(
+                  r"```(?:text|txt)?",
+                  "",
+                  text,
+                  flags=re.IGNORECASE
+              )
+
+              text = text.replace(
+                  "```",
+                  ""
+              )
+
+              return text.strip()
+
+          def validate(text):
+
+              text = clean(text)
+
+              lines = [
+                  line.strip()
+                  for line in text.splitlines()
+                  if line.strip()
+              ]
+
+              if not 3 <= len(lines) <= 4:
+                  return None
+
+              pattern = re.compile(
+                  r"^(बच्चा 1|बच्चा 2):\s*\S+"
+              )
+
+              for line in lines:
+
+                  if not pattern.match(line):
+                      return None
+
+              # Alternate speakers.
+
+              for i, line in enumerate(lines):
+
+                  expected = (
+                      "बच्चा 1"
+                      if i % 2 == 0
+                      else "बच्चा 2"
+                  )
+
+                  if not line.startswith(
+                      expected + ":"
+                  ):
+                      return None
+
+              # Hindi check.
+
+              hindi_chars = len(
+                  re.findall(
+                      r"[\u0900-\u097F]",
+                      text
+                  )
+              )
+
+              if hindi_chars < 20:
+                  return None
+
+              # Keep it short.
+
+              words = re.findall(
+                  r"[\u0900-\u097F]+",
+                  text
+              )
+
+              if len(words) > 55:
+                  return None
+
+              # No repeated lines.
+
+              normalized = [
+                  re.sub(
+                      r"\s+",
+                      " ",
+                      x.lower()
+                  ).strip()
+                  for x in lines
+              ]
+
+              if len(
+                  set(normalized)
+              ) != len(normalized):
+
+                  return None
+
+              return "\n".join(lines)
+
+          # ======================================================
+          # FALLBACK JOKES
+          # ======================================================
+
+          FALLBACKS = [
+
+              [
+                  "बच्चा 1: पापा, मुझे पैसे चाहिए!",
+                  "बच्चा 2: क्यों?",
+                  "बच्चा 1: आपके पास हैं ना!",
+              ],
+
+              [
+                  "बच्चा 1: मम्मी, मैं आज से बड़ा हो गया!",
+                  "बच्चा 2: कैसे?",
+                  "बच्चा 1: मैंने बिस्कुट खुद खोल लिया!",
+              ],
+
+              [
+                  "बच्चा 1: पापा, मुझे मोबाइल दो!",
+                  "बच्चा 2: क्यों चाहिए?",
+                  "बच्चा 1: गेम में आपकी हार देखनी है!",
+              ],
+
+              [
+                  "बच्चा 1: मम्मी, मुझे भूख नहीं है।",
+                  "बच्चा 2: पक्का?",
+                  "बच्चा 1: पिज्जा हो तो भूख आ जाएगी!",
+              ],
+
+              [
+                  "बच्चा 1: पापा, मैं बहुत समझदार हूँ!",
+                  "बच्चा 2: कैसे?",
+                  "बच्चा 1: चॉकलेट छुपाकर खाता हूँ!",
+              ],
+
+              [
+                  "बच्चा 1: अंकल, आइसक्रीम फ्री है?",
+                  "बच्चा 2: नहीं बेटा।",
+                  "बच्चा 1: फिर मैं बस देख लेता हूँ!",
+              ],
+
+              [
+                  "बच्चा 1: पापा, आज स्कूल नहीं जाना।",
+                  "बच्चा 2: क्यों?",
+                  "बच्चा 1: स्कूल को मेरी याद आती है!",
+              ],
+
+              [
+                  "बच्चा 1: मम्मी, मुझे नींद नहीं आ रही।",
+                  "बच्चा 2: मोबाइल मत देखो।",
+                  "बच्चा 1: फिर नींद कैसे आएगी?",
+              ]
+
+          ]
+
+          final_joke = None
+
+          try:
+
+              output = call_model()
+
+              final_joke = validate(
+                  output
+              )
 
           except Exception as e:
 
-              print("AI failed:", e)
+              print(
+                  "Generation error:",
+                  e
+              )
 
-              output = """बच्चा 1: पापा, मेरे पास पैसे नहीं हैं।
-          बच्चा 2: तो क्या चाहिए?
-          बच्चा 1: पैसे चाहिए।
-          बच्चा 2: पैसे क्यों चाहिए?
-          बच्चा 1: खिलौना खरीदना है।
-          बच्चा 2: पैसे कहाँ से आएंगे?
-          बच्चा 1: आपके पास हैं ना।
-          बच्चा 2: मतलब मेरे पैसे तुम्हारे?
-          बच्चा 1: हाँ, मैं छोटा हूँ ना।
-          बच्चा 2: वाह, बहुत तेज हो!"""
+          # ======================================================
+          # RETRY
+          # ======================================================
 
-          output = output.strip()
+          if final_joke is None:
 
-          output = re.sub(
-              r"```.*?```",
-              "",
-              output,
-              flags=re.S
-          ).strip()
+              retry_prompt = """
+              केवल 3 या 4 lines का बहुत छोटा Hindi joke लिखो।
 
-          lines = [
-              x.strip()
-              for x in output.splitlines()
-              if x.strip()
-          ]
+              Format:
 
-          valid = []
+              बच्चा 1: ...
+              बच्चा 2: ...
+              बच्चा 1: ...
 
-          for line in lines:
+              3 साल के प्यारे छोटे chubby बच्चे की
+              innocent comedy हो।
 
-              if re.match(
-                  r"^(बच्चा 1|बच्चा 2):",
-                  line
-              ):
-                  valid.append(line)
+              पहली line hook।
+              आखिरी line punchline।
 
-          if not 8 <= len(valid) <= 12:
+              केवल dialogue।
+              """
 
-              valid = [
-                  "बच्चा 1: पापा, मेरे पास पैसे नहीं हैं।",
-                  "बच्चा 2: तो क्या चाहिए?",
-                  "बच्चा 1: पैसे चाहिए।",
-                  "बच्चा 2: पैसे क्यों चाहिए?",
-                  "बच्चा 1: खिलौना खरीदना है।",
-                  "बच्चा 2: पैसे कहाँ से आएंगे?",
-                  "बच्चा 1: आपके पास हैं ना।",
-                  "बच्चा 2: मतलब मेरे पैसे तुम्हारे?",
-                  "बच्चा 1: हाँ, मैं छोटा हूँ ना।",
-                  "बच्चा 2: वाह, बहुत तेज हो!"
-              ]
+              retry_payload = {
+                  "model": MODEL,
+                  "messages": [
+                      {
+                          "role": "user",
+                          "content": retry_prompt
+                      }
+                  ],
+                  "stream": False,
+                  "options": {
+                      "temperature": 1.0,
+                      "top_p": 0.95,
+                      "num_predict": 100
+                  }
+              }
+
+              try:
+
+                  body = json.dumps(
+                      retry_payload,
+                      ensure_ascii=False
+                  ).encode("utf-8")
+
+                  request = urllib.request.Request(
+                      API,
+                      data=body,
+                      headers={
+                          "Content-Type": "application/json"
+                      },
+                      method="POST"
+                  )
+
+                  with urllib.request.urlopen(
+                      request,
+                      timeout=120
+                  ) as response:
+
+                      result = json.loads(
+                          response.read().decode(
+                              "utf-8"
+                          )
+                      )
+
+                  output = result[
+                      "message"
+                  ][
+                      "content"
+                  ].strip()
+
+                  final_joke = validate(
+                      output
+                  )
+
+              except Exception as e:
+
+                  print(
+                      "Retry failed:",
+                      e
+                  )
+
+          # ======================================================
+          # FALLBACK
+          # ======================================================
+
+          if final_joke is None:
+
+              print(
+                  "Using fallback joke."
+              )
+
+              final_joke = "\n".join(
+                  random.choice(
+                      FALLBACKS
+                  )
+              )
+
+          # ======================================================
+          # SAVE
+          # ======================================================
 
           with open(
               "script.txt",
@@ -263,26 +541,39 @@ jobs:
           ) as f:
 
               f.write(
-                  "\n".join(valid)
+                  final_joke + "\n"
               )
 
-          print("\n===== HINDI SCRIPT =====\n")
-
+          print()
           print(
-              "\n".join(valid)
+              "================================"
+          )
+          print(
+              "QUICK HINDI TODDLER JOKE"
+          )
+          print(
+              "================================"
+          )
+          print(
+              final_joke
+          )
+          print(
+              "================================"
           )
 
           PY
 
-          python3 generate.py
+          python3 generate_joke.py
 
       # ==========================================================
-      # 5. INSTALL HINDI TTS
+      # 5. INSTALL FFMPEG + EDGE TTS
       # ==========================================================
 
-      - name: Install Hindi TTS
+      - name: Install audio tools
         shell: bash
         run: |
+
+          set -euo pipefail
 
           sudo apt-get update
 
@@ -293,12 +584,14 @@ jobs:
           python3 -m pip install edge-tts
 
       # ==========================================================
-      # 6. GENERATE HINDI VOICE
+      # 6. GENERATE HINDI VOICES
       # ==========================================================
 
-      - name: Generate Hindi dialogue voices
+      - name: Generate Hindi voices
         shell: bash
         run: |
+
+          set -euo pipefail
 
           mkdir -p audio
 
@@ -309,11 +602,13 @@ jobs:
             if [[ "$line" == बच्चा\ 1:* ]]; then
 
               voice="hi-IN-MadhurNeural"
+
               text="${line#बच्चा 1:}"
 
             elif [[ "$line" == बच्चा\ 2:* ]]; then
 
               voice="hi-IN-SwaraNeural"
+
               text="${line#बच्चा 2:}"
 
             else
@@ -322,32 +617,45 @@ jobs:
 
             fi
 
-            text="$(echo "$text" | sed 's/^[[:space:]]*//')"
+            text="$(
+              echo "$text" |
+              sed 's/^[[:space:]]*//'
+            )"
 
             output="audio/$(printf '%03d' "$i").mp3"
 
+            echo "Generating voice $i..."
+
             edge-tts \
               --voice "$voice" \
-              --rate="+6%" \
-              --pitch="+12Hz" \
+              --rate="+8%" \
+              --volume="+0%" \
+              --pitch="+14Hz" \
               --text "$text" \
               --write-media "$output"
 
             test -s "$output"
 
-            i=$((i+1))
+            i=$((i + 1))
 
           done < script.txt
 
-          echo "Generated $i voice clips."
+          if [ "$i" -lt 2 ]; then
+            echo "Not enough dialogue audio."
+            exit 1
+          fi
+
+          echo "Generated $i audio clips."
 
       # ==========================================================
-      # 7. NORMALIZE AUDIO
+      # 7. PROCESS AUDIO
       # ==========================================================
 
-      - name: Process audio
+      - name: Process dialogue
         shell: bash
         run: |
+
+          set -euo pipefail
 
           mkdir -p processed
 
@@ -363,17 +671,19 @@ jobs:
               -ac 1 \
               "processed/$(printf '%03d' "$i").wav"
 
-            i=$((i+1))
+            i=$((i + 1))
 
           done
 
       # ==========================================================
-      # 8. ADD PAUSES
+      # 8. ADD SHORT PAUSES
       # ==========================================================
 
-      - name: Add natural pauses
+      - name: Add quick dialogue pauses
         shell: bash
         run: |
+
+          set -euo pipefail
 
           mkdir -p segments
 
@@ -384,10 +694,10 @@ jobs:
             ffmpeg \
               -y \
               -i "$file" \
-              -af "apad=pad_dur=0.18" \
+              -af "apad=pad_dur=0.10" \
               "segments/$(printf '%03d' "$i").wav"
 
-            i=$((i+1))
+            i=$((i + 1))
 
           done
 
@@ -399,11 +709,14 @@ jobs:
         shell: bash
         run: |
 
+          set -euo pipefail
+
           : > concat.txt
 
           for file in segments/*.wav; do
 
-            echo "file '$PWD/$file'" >> concat.txt
+            echo "file '$PWD/$file'" \
+              >> concat.txt
 
           done
 
@@ -415,6 +728,8 @@ jobs:
             -c:a pcm_s16le \
             voice.wav
 
+          echo "Voice duration:"
+
           ffprobe \
             -v error \
             -show_entries format=duration \
@@ -422,17 +737,16 @@ jobs:
             voice.wav
 
       # ==========================================================
-      # 10. CREATE VISUAL SCENE PLAN
+      # 10. CREATE TODDLER SCENE PLAN
       # ==========================================================
 
-      - name: Create toddler scene plan
+      - name: Create quick-joke scene plan
         shell: bash
         run: |
 
           python3 - <<'PY'
 
           import json
-          import re
 
           with open(
               "script.txt",
@@ -447,51 +761,48 @@ jobs:
 
           toddler = (
               "fictional 3-year-old Indian toddler, "
-              "very small body, slightly chubby round build, "
+              "very small and slightly chubby round body, "
               "cute round face, large expressive brown eyes, "
-              "short black hair, natural toddler proportions, "
-              "adorable innocent expression, realistic skin, "
+              "short black hair, soft natural facial features, "
+              "adorable innocent expression, realistic "
+              "toddler proportions, realistic skin texture, "
               "simple colorful T-shirt and shorts"
           )
 
           scenes = []
 
           shots = [
-              "cinematic close-up",
-              "medium shot",
-              "reaction close-up",
-              "over-the-shoulder",
+              "extreme close-up",
+              "close-up",
               "medium close-up",
-              "side shot",
-              "slow push-in",
-              "reaction shot"
+              "reaction close-up"
           ]
 
           actions = [
-              "looks curiously at the other character",
-              "speaks with an innocent expression",
-              "raises one hand while explaining",
-              "looks confused",
-              "smiles innocently",
-              "makes a funny surprised face",
-              "leans forward while speaking",
-              "gives a playful toddler reaction"
+              "looks directly at the other character",
+              "speaks with innocent confidence",
+              "makes a confused cute expression",
+              "gives a funny surprised reaction"
+          ]
+
+          expressions = [
+              "curious innocent expression",
+              "confident innocent smile",
+              "confused cute expression",
+              "funny surprised reaction"
           ]
 
           for i, line in enumerate(lines):
 
-              speaker = (
-                  "बच्चा 1"
-                  if line.startswith("बच्चा 1:")
-                  else "बच्चा 2"
-              )
-
-              character = (
-                  toddler
-                  if speaker == "बच्चा 1"
-                  else
-                  "fictional Indian adult supporting character"
-              )
+              if line.startswith("बच्चा 1:"):
+                  speaker = "बच्चा 1"
+                  character = toddler
+              else:
+                  speaker = "बच्चा 2"
+                  character = (
+                      "fictional Indian parent or adult, "
+                      "natural realistic appearance"
+                  )
 
               scenes.append({
 
@@ -501,157 +812,12 @@ jobs:
 
                   "speaker": speaker,
 
-                  "duration": 3,
+                  "duration": 2.5,
 
-                  "shot": shots[i % len(shots)],
+                  "shot": shots[
+                      i % len(shots)
+                  ],
 
                   "camera": (
-                      "gentle cinematic camera movement"
-                  ),
-
-                  "character": character,
-
-                  "action": actions[i % len(actions)],
-
-                  "expression": (
-                      "natural funny innocent expression"
-                  ),
-
-                  "environment": (
-                      "realistic Indian neighborhood "
-                      "or small local shop"
-                  ),
-
-                  "visual_prompt": (
-                      "Photorealistic cinematic vertical "
-                      "9:16 video frame of " +
-                      character +
-                      ", realistic Indian environment, "
-                      "natural daylight, realistic skin texture, "
-                      "realistic clothing, cinematic lighting, "
-                      "shallow depth of field, natural body "
-                      "movement, authentic photography, "
-                      "funny innocent reaction, "
-                      "consistent character appearance, "
-                      "no text, no subtitles, no captions, "
-                      "no watermark."
-                  )
-
-              })
-
-          plan = {
-
-              "title": "Funny Indian Toddler",
-
-              "aspect_ratio": "9:16",
-
-              "style": (
-                  "photorealistic cinematic toddler comedy"
-              ),
-
-              "main_character": toddler,
-
-              "scenes": scenes
-
-          }
-
-          with open(
-              "scenes.json",
-              "w",
-              encoding="utf-8"
-          ) as f:
-
-              json.dump(
-                  plan,
-                  f,
-                  ensure_ascii=False,
-                  indent=2
-              )
-
-          print(
-              f"Created {len(scenes)} scenes."
-          )
-
-          PY
-
-      # ==========================================================
-      # 11. CREATE VISUAL PROMPTS
-      # ==========================================================
-
-      - name: Create visual prompt file
-        shell: bash
-        run: |
-
-          python3 - <<'PY'
-
-          import json
-
-          with open(
-              "scenes.json",
-              encoding="utf-8"
-          ) as f:
-
-              data = json.load(f)
-
-          with open(
-              "visual_prompts.txt",
-              "w",
-              encoding="utf-8"
-          ) as f:
-
-              for scene in data["scenes"]:
-
-                  f.write(
-                      f"SCENE {scene['scene']}\n"
-                  )
-
-                  f.write(
-                      f"{scene['visual_prompt']}\n\n"
-                  )
-
-          PY
-
-      # ==========================================================
-      # 12. CREATE A VERTICAL TEST VIDEO
-      # ==========================================================
-
-      - name: Create video assembly
-        shell: bash
-        run: |
-
-          duration=$(
-            ffprobe \
-              -v error \
-              -show_entries format=duration \
-              -of default=noprint_wrappers=1:nokey=1 \
-              voice.wav
-          )
-
-          ffmpeg \
-            -y \
-            -f lavfi \
-            -i "color=c=black:s=1080x1920:r=30" \
-            -i voice.wav \
-            -t "$duration" \
-            -vf "format=yuv420p" \
-            -c:v libx264 \
-            -preset ultrafast \
-            -c:a aac \
-            -shortest \
-            toddler_short.mp4
-
-      # ==========================================================
-      # 13. SAVE ARTIFACTS
-      # ==========================================================
-
-      - name: Upload generated files
-        uses: actions/upload-artifact@v4
-        with:
-          name: hindi-toddler-short
-          path: |
-            script.txt
-            scenes.json
-            visual_prompts.txt
-            voice.wav
-            toddler_short.mp4
-          retention-days: 1
+                      "fast but smooth cinematic "
+                      "c
