@@ -36,7 +36,9 @@ jobs:
               data = json.load(f)
 
           print("Response type:", type(data).__name__)
-          print("Top-level keys:", list(data.keys()) if isinstance(data, dict) else "not a dictionary")
+
+          if isinstance(data, dict):
+              print("Top-level keys:", list(data.keys()))
 
           result = data.get("result") if isinstance(data, dict) else None
 
@@ -48,21 +50,27 @@ jobs:
               image = result.get("image")
 
               if image:
-                  print("Found result.image")
                   with open("scene1.png", "wb") as f:
                       f.write(base64.b64decode(image))
+
                   print("SCENE 1 IMAGE CREATED")
               else:
-                  raise SystemExit("ERROR: result exists but result.image was not found")
+                  raise SystemExit(
+                      "ERROR: result.image was not found"
+                  )
 
           elif isinstance(result, str):
-              print("Found result as string")
+              print("Result is a Base64 string")
+
               with open("scene1.png", "wb") as f:
                   f.write(base64.b64decode(result))
+
               print("SCENE 1 IMAGE CREATED")
 
           else:
-              raise SystemExit("ERROR: Unexpected Cloudflare response format")
+              raise SystemExit(
+                  "ERROR: Unexpected Cloudflare response format"
+              )
           PY
 
       - name: Upload diagnostic result
