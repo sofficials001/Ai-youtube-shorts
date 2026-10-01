@@ -19,51 +19,56 @@ jobs:
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{
-              "prompt": "photorealistic cinematic photograph of the same fictional 3-year-old Indian toddler boy, very small and slightly chubby round body, cute round cheeks, huge expressive brown eyes, short black hair, adorable innocent smile, wearing a bright yellow T-shirt and blue shorts, standing in a realistic Indian neighborhood street, warm natural daylight, realistic skin texture, professional photography, shallow depth of field"
+              "prompt": "adorable cute 3-year-old Indian toddler boy, very small and slightly chubby, round cheeks, huge expressive brown eyes, short black hair, happy innocent smile, bright yellow T-shirt, blue shorts, realistic Indian neighborhood, photorealistic cinematic photograph, natural daylight, realistic skin texture"
             }' \
             -o scene1.json
 
-          python -c "import json,base64; d=json.load(open('scene1.json')); open('scene1.png','wb').write(base64.b64decode(d['result']['image']))"
+          echo "========== CLOUDFLARE RESPONSE =========="
+          cat scene1.json
+          echo ""
+          echo "=========================================="
 
-      - name: Generate Scene 2
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          curl -sS \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/black-forest-labs/flux-1-schnell" \
-            -X POST \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "prompt": "photorealistic cinematic close-up of the same fictional 3-year-old Indian toddler boy, very small and slightly chubby round body, cute round cheeks, huge expressive brown eyes, short black hair, wearing a bright yellow T-shirt and blue shorts, making a hilarious confused facial expression while looking at an adult standing nearby, realistic Indian home entrance, warm natural daylight, realistic skin texture, professional photography, shallow depth of field"
-            }' \
-            -o scene2.json
+          python - <<'PY'
+          import json
+          import base64
 
-          python -c "import json,base64; d=json.load(open('scene2.json')); open('scene2.png','wb').write(base64.b64decode(d['result']['image']))"
+          with open("scene1.json", "r") as f:
+              data = json.load(f)
 
-      - name: Generate Scene 3
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          curl -sS \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/black-forest-labs/flux-1-schnell" \
-            -X POST \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "prompt": "photorealistic cinematic photograph of the same fictional 3-year-old Indian toddler boy, very small and slightly chubby round body, cute round cheeks, huge expressive brown eyes, short black hair, bright yellow T-shirt and blue shorts, giving an extremely funny innocent smile after saying something clever, playful expression, realistic Indian street background, warm natural daylight, realistic skin texture, professional photography, shallow depth of field"
-            }' \
-            -o scene3.json
+          print("Response type:", type(data).__name__)
+          print("Top-level keys:", list(data.keys()) if isinstance(data, dict) else "not a dictionary")
 
-          python -c "import json,base64; d=json.load(open('scene3.json')); open('scene3.png','wb').write(base64.b64decode(d['result']['image']))"
+          result = data.get("result") if isinstance(data, dict) else None
 
-      - name: Upload all scenes
+          print("Result type:", type(result).__name__)
+
+          if isinstance(result, dict):
+              print("Result keys:", list(result.keys()))
+
+              image = result.get("image")
+
+              if image:
+                  print("Found result.image")
+                  with open("scene1.png", "wb") as f:
+                      f.write(base64.b64decode(image))
+                  print("SCENE 1 IMAGE CREATED")
+              else:
+                  raise SystemExit("ERROR: result exists but result.image was not found")
+
+          elif isinstance(result, str):
+              print("Found result as string")
+              with open("scene1.png", "wb") as f:
+                  f.write(base64.b64decode(result))
+              print("SCENE 1 IMAGE CREATED")
+
+          else:
+              raise SystemExit("ERROR: Unexpected Cloudflare response format")
+          PY
+
+      - name: Upload diagnostic result
         uses: actions/upload-artifact@v4
         with:
-          name: toddler-scenes
+          name: toddler-scene-diagnostic
           path: |
+            scene1.json
             scene1.png
-            scene2.png
-            scene3.png
