@@ -140,11 +140,11 @@ jobs:
           character="wholesome family-friendly fictional Indian toddler boy, about three years old, small chubby body, round cheeks, large expressive brown eyes, short black hair, bright yellow T-shirt, blue shorts"
 
 
-          scene1="cute happy smile, standing on a sunny Indian residential street, warm natural daylight, realistic professional photography, cinematic portrait, vertical composition"
+          scene1="wide full-body shot, toddler standing alone beside a small red toy car on a sunny Indian residential street, smiling directly at camera, clearly visible yellow T-shirt and blue shorts, warm natural daylight, realistic professional photography, vertical 9:16 composition"
 
-          scene2="funny confused expression, looking toward his mother near an Indian home entrance, warm natural daylight, realistic professional photography, cinematic close-up, vertical composition"
+          scene2="medium close-up at the doorway of an Indian home, toddler looking sideways with a funny confused expression toward his mother, mother only partly visible in the background, clearly different camera angle and setting from other scenes, warm natural daylight, realistic professional photography, vertical 9:16 composition"
 
-          scene3="playful happy expression after saying something funny, colorful Indian neighborhood, warm natural daylight, realistic professional photography, cinematic portrait, vertical composition"
+          scene3="close-up of the same toddler laughing proudly while holding a school notebook with a simple blank cover, colorful Indian neighborhood courtyard, different pose and framing from the other scenes, warm natural daylight, realistic professional photography, vertical 9:16 composition"
 
 
           fallback="wholesome family-friendly photograph of a fictional young Indian child smiling outdoors, colorful casual clothing, sunny Indian neighborhood, natural daylight, realistic professional photography, vertical composition"
@@ -236,7 +236,18 @@ jobs:
             scene3_fallback.json
 
 
-          echo "All three toddler scenes generated successfully."
+          # Catch the exact failure mode where the same image is accidentally
+          # reused for every scene. Different prompts are used above; if the
+          # API nevertheless returns identical files, fail rather than publish
+          # a video that only shows one picture.
+          image_hashes="$(sha256sum scene1.jpg scene2.jpg scene3.jpg | awk '{print $1}' | sort -u | wc -l)"
+          if [ "$image_hashes" -ne 3 ]; then
+            echo "::error::Scene images are identical. Regenerate the workflow run."
+            sha256sum scene1.jpg scene2.jpg scene3.jpg
+            exit 1
+          fi
+
+          echo "All three distinct toddler scenes generated successfully."
 
 
       # ============================================================
@@ -448,16 +459,20 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Keep the video at 9 seconds and guarantee that the narration is
+          # present from the beginning, padded if short, and never runs past it.
           ffmpeg -y \
             -i silent_video.mp4 \
             -i voice.wav \
             -map 0:v:0 \
             -map 1:a:0 \
-            -af "apad" \
+            -af "aresample=44100,volume=1.5,apad=pad_dur=9,atrim=start=0:duration=9" \
             -t 9 \
             -c:v copy \
             -c:a aac \
-            -b:a 128k \
+            -b:a 192k \
+            -ar 44100 \
+            -ac 2 \
             -movflags +faststart \
             final_toddler_short.mp4
 
@@ -521,6 +536,20 @@ jobs:
               final_toddler_short.mp4
           )"
 
+          audio_duration="$(
+            ffprobe \
+              -v error \
+              -select_streams a:0 \
+              -show_entries stream=duration \
+              -of csv=p=0 \
+              final_toddler_short.mp4
+          )"
+
+          # Detect a missing or completely silent audio track.
+          audio_stats="$(ffmpeg -hide_banner -i final_toddler_short.mp4 -map 0:a:0 -af volumedetect -f null - 2>&1 || true)"
+          mean_volume="$(printf '%s\\n' "$audio_stats" | sed -n 's/.*mean_volume: \\([-0-9.]*\\) dB.*/\\1/p' | tail -n 1)"
+          max_volume="$(printf '%s\\n' "$audio_stats" | sed -n 's/.*max_volume: \\([-0-9.]*\\) dB.*/\\1/p' | tail -n 1)"
+
 
           echo "=========================================="
           echo "FINAL VIDEO CHECK"
@@ -528,6 +557,9 @@ jobs:
           echo "Resolution: ${width}x${height}"
           echo "Video codec: ${video_codec}"
           echo "Audio codec: ${audio_codec}"
+          echo "Audio duration: ${audio_duration:-unknown} seconds"
+          echo "Audio mean volume: ${mean_volume:-unknown} dB"
+          echo "Audio peak volume: ${max_volume:-unknown} dB"
           echo "Duration: ${duration} seconds"
           echo "=========================================="
 
@@ -552,6 +584,21 @@ jobs:
 
           if [ "$audio_codec" != "aac" ]; then
             echo "::error::Wrong audio codec: $audio_codec"
+            exit 1
+          fi
+
+          if [ -z "$audio_duration" ] || ! awk -v d="$audio_duration" 'BEGIN { exit !(d > 0.5) }'; then
+            echo "::error::Audio stream is missing or too short."
+            exit 1
+          fi
+
+          if [ -z "$mean_volume" ] || [ "$mean_volume" = "-inf" ]; then
+            echo "::error::Audio is silent or could not be measured."
+            exit 1
+          fi
+
+          if ! awk -v v="$mean_volume" 'BEGIN { exit !(v > -45) }'; then
+            echo "::error::Audio is too quiet (mean volume: $mean_volume dB)."
             exit 1
           fi
 
@@ -601,53 +648,4 @@ jobs:
 
       # ============================================================
       # 10. PREPARE ARTIFACT
-      # ============================================================
-      - name: Prepare final package
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          rm -rf artifacts
-          mkdir -p artifacts
-
-
-          files=(
-            final_toddler_short.mp4
-            scene1.jpg
-            scene2.jpg
-            scene3.jpg
-            script.txt
-            voice.wav
-            youtube_metadata.json
-          )
-
-
-          for file in "${files[@]}"
-          do
-            if [ -s "$file" ]; then
-              cp "$file" artifacts/
-              echo "Added: $file"
-            else
-              echo "Not available: $file"
-            fi
-          done
-
-
-          echo ""
-          echo "Artifact contents:"
-          ls -lh artifacts || true
-
-
-      # ============================================================
-      # 11. UPLOAD ARTIFACT
-      # ============================================================
-      - name: Upload final package
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: toddler-video-test
-          path: artifacts/
-          if-no-files-found: warn
-          compression-level: 0
-          retention-days: 7
+      # ===============================================
