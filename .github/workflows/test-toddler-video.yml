@@ -3,351 +3,693 @@ name: Test Toddler Video
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   generate-video:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
 
       # ============================================================
-      # INSTALL TOOLS
+      # 1. INSTALL TOOLS
       # ============================================================
       - name: Install tools
+        shell: bash
         run: |
+          set -euo pipefail
+
           sudo apt-get update
           sudo apt-get install -y ffmpeg python3-pip
 
           python3 -m pip install --upgrade pip
           python3 -m pip install edge-tts
 
-          echo "Tools installed successfully"
+          echo "Tools installed successfully."
+
 
       # ============================================================
-      # CHECK SECRETS
+      # 2. CHECK CLOUDFLARE SECRETS
       # ============================================================
       - name: Check Cloudflare configuration
+        shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          set -euo pipefail
+
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "ERROR: CLOUDFLARE_API_TOKEN is missing"
+            echo "ERROR: CLOUDFLARE_API_TOKEN is missing."
             exit 1
           fi
 
           if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "ERROR: CLOUDFLARE_ACCOUNT_ID is missing"
+            echo "ERROR: CLOUDFLARE_ACCOUNT_ID is missing."
             exit 1
           fi
 
-          echo "Cloudflare configuration found"
+          echo "Cloudflare secrets found."
+
 
       # ============================================================
-      # GENERATE SCENE 1
+      # 3. GENERATE ALL TODDLER SCENES
       # ============================================================
-      - name: Generate Scene 1
+      - name: Generate toddler scenes
+        shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
 
-          echo "======================================"
-          echo "GENERATING SCENE 1"
-          echo "======================================"
+          set -euo pipefail
 
-          curl -sS \
-            --retry 3 \
-            --retry-delay 3 \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/black-forest-labs/flux-1-schnell" \
-            -X POST \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "prompt": "A wholesome family friendly cinematic photograph of a fictional young Indian child, around three years old, small and cheerful, round cheeks, large expressive brown eyes, short black hair, innocent happy smile, wearing a bright yellow T-shirt and blue shorts, standing on a clean residential street in India, warm morning sunlight, realistic photography, natural proportions, detailed face, professional camera, shallow depth of field",
-              "steps": 4,
-              "seed": 12345
-            }' \
-            -o scene1.json
-
-          python3 - <<'PY'
-          import json
+          cat > generate_scenes.py <<'PY'
           import base64
-          import sys
+          import json
+          import os
+          import shutil
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
 
-          with open("scene1.json", "r") as f:
-              data = json.load(f)
 
-          if not data.get("success", False):
-              print("Cloudflare response:")
-              print(json.dumps(data, indent=2))
-              sys.exit("Scene 1 failed")
+          ACCOUNT_ID = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+          API_TOKEN = os.environ["CLOUDFLARE_API_TOKEN"]
 
-          image = data["result"]["image"]
+          ENDPOINT = (
+              "https://api.cloudflare.com/client/v4/accounts/"
+              + ACCOUNT_ID
+              + "/ai/run/@cf/black-forest-labs/flux-1-schnell"
+          )
 
-          with open("scene1.png", "wb") as f:
-              f.write(base64.b64decode(image))
 
-          print("Scene 1 created successfully")
+          # --------------------------------------------------------
+          # CHARACTER
+          # --------------------------------------------------------
+
+          CHARACTER = (
+              "wholesome family-friendly fictional Indian boy, "
+              "three years old, cute round cheeks, "
+              "large expressive brown eyes, short black hair, "
+              "slightly chubby toddler proportions, "
+              "bright yellow T-shirt, blue shorts"
+          )
+
+
+          # --------------------------------------------------------
+          # SCENE PROMPTS
+          # --------------------------------------------------------
+
+          SCENES = [
+
+              (
+                  "scene1.jpg",
+                  CHARACTER
+                  + ", cheerful innocent smile, "
+                  + "standing on a clean Indian residential street, "
+                  + "warm natural daylight, realistic professional photography, "
+                  + "cinematic portrait, shallow depth of field"
+              ),
+
+              (
+                  "scene2.jpg",
+                  CHARACTER
+                  + ", funny confused expression, "
+                  + "looking toward a family member near an Indian home entrance, "
+                  + "warm natural daylight, realistic professional photography, "
+                  + "cinematic close-up, shallow depth of field"
+              ),
+
+              (
+                  "scene3.jpg",
+                  CHARACTER
+                  + ", playful happy expression, "
+                  + "smiling after saying something clever, "
+                  + "colorful Indian neighborhood background, "
+                  + "warm natural daylight, realistic professional photography, "
+                  + "cinematic portrait, shallow depth of field"
+              )
+
+          ]
+
+
+          FALLBACK_PROMPTS = [
+
+              (
+                  "scene1.jpg",
+                  "wholesome family-friendly photograph of a cheerful "
+                  "fictional Indian child with a round cute face, "
+                  "large expressive brown eyes, short black hair, "
+                  "bright yellow shirt, blue shorts, "
+                  "sunny residential neighborhood in India, "
+                  "natural light, realistic professional photography"
+              ),
+
+              (
+                  "scene2.jpg",
+                  "wholesome family-friendly photograph of the same "
+                  "fictional Indian child, smiling and looking curious, "
+                  "bright yellow shirt, blue shorts, "
+                  "Indian home entrance, natural daylight, "
+                  "realistic professional photography"
+              ),
+
+              (
+                  "scene3.jpg",
+                  "wholesome family-friendly photograph of the same "
+                  "fictional Indian child, cheerful playful smile, "
+                  "bright yellow shirt, blue shorts, "
+                  "sunny Indian neighborhood, "
+                  "natural daylight, realistic professional photography"
+              )
+
+          ]
+
+
+          def request_image(prompt):
+              payload = {
+                  "prompt": prompt,
+                  "steps": 4
+              }
+
+              body = json.dumps(
+                  payload,
+                  ensure_ascii=False
+              ).encode("utf-8")
+
+              request = urllib.request.Request(
+                  ENDPOINT,
+                  data=body,
+                  headers={
+                      "Authorization": "Bearer " + API_TOKEN,
+                      "Content-Type": "application/json"
+                  },
+                  method="POST"
+              )
+
+              try:
+                  with urllib.request.urlopen(
+                      request,
+                      timeout=120
+                  ) as response:
+
+                      raw = response.read()
+
+              except urllib.error.HTTPError as error:
+
+                  response_body = error.read().decode(
+                      "utf-8",
+                      errors="replace"
+                  )
+
+                  raise RuntimeError(
+                      "Cloudflare HTTP "
+                      + str(error.code)
+                      + ": "
+                      + response_body
+                  )
+
+              except Exception as error:
+
+                  raise RuntimeError(
+                      "Cloudflare request failed: "
+                      + str(error)
+                  )
+
+
+              try:
+                  data = json.loads(
+                      raw.decode("utf-8")
+                  )
+              except Exception as error:
+
+                  raise RuntimeError(
+                      "Cloudflare returned invalid JSON: "
+                      + str(error)
+                  )
+
+
+              if not data.get("success", False):
+
+                  raise RuntimeError(
+                      "Cloudflare error: "
+                      + json.dumps(
+                          data,
+                          ensure_ascii=False
+                      )
+                  )
+
+
+              result = data.get("result")
+
+              if not isinstance(result, dict):
+
+                  raise RuntimeError(
+                      "Cloudflare response has no result object."
+                  )
+
+
+              encoded = result.get("image")
+
+              if not encoded:
+
+                  raise RuntimeError(
+                      "Cloudflare response contains no image."
+                  )
+
+
+              try:
+                  image_bytes = base64.b64decode(
+                      encoded,
+                      validate=True
+                  )
+              except Exception as error:
+
+                  raise RuntimeError(
+                      "Invalid Base64 image: "
+                      + str(error)
+                  )
+
+
+              if len(image_bytes) < 1000:
+
+                  raise RuntimeError(
+                      "Generated image is unexpectedly small."
+                  )
+
+
+              return image_bytes
+
+
+          def save_image(path, image_bytes):
+
+              Path(path).write_bytes(
+                  image_bytes
+              )
+
+              print(
+                  "Saved "
+                  + path
+                  + " ("
+                  + str(len(image_bytes))
+                  + " bytes)"
+              )
+
+
+          def generate_scene(
+              filename,
+              primary_prompt,
+              fallback_prompt
+          ):
+
+              print()
+              print(
+                  "=========================================="
+              )
+              print(
+                  "Generating "
+                  + filename
+              )
+              print(
+                  "=========================================="
+              )
+
+              # ----------------------------------------------------
+              # PRIMARY REQUEST
+              # ----------------------------------------------------
+
+              try:
+
+                  image = request_image(
+                      primary_prompt
+                  )
+
+                  save_image(
+                      filename,
+                      image
+                  )
+
+                  return True
+
+              except Exception as error:
+
+                  print(
+                      "Primary prompt failed:"
+                  )
+
+                  print(
+                      str(error)
+                  )
+
+
+              # ----------------------------------------------------
+              # FALLBACK REQUEST
+              # ----------------------------------------------------
+
+              print(
+                  "Trying fallback prompt..."
+              )
+
+              try:
+
+                  image = request_image(
+                      fallback_prompt
+                  )
+
+                  save_image(
+                      filename,
+                      image
+                  )
+
+                  return True
+
+              except Exception as error:
+
+                  print(
+                      "Fallback prompt failed:"
+                  )
+
+                  print(
+                      str(error)
+                  )
+
+                  return False
+
+
+          # --------------------------------------------------------
+          # GENERATE SCENES
+          # --------------------------------------------------------
+
+          generated = {}
+
+          for index in range(3):
+
+              filename, prompt = SCENES[index]
+
+              fallback_filename, fallback_prompt = (
+                  FALLBACK_PROMPTS[index]
+              )
+
+              success = generate_scene(
+                  filename,
+                  prompt,
+                  fallback_prompt
+              )
+
+              generated[filename] = success
+
+
+          # --------------------------------------------------------
+          # GUARANTEE THREE FILES WHEN POSSIBLE
+          # --------------------------------------------------------
+
+          existing = [
+              name
+              for name, success in generated.items()
+              if success and Path(name).exists()
+          ]
+
+
+          print()
+          print(
+              "=========================================="
+          )
+
+          print(
+              "Generated scenes:"
+          )
+
+          for name in generated:
+
+              print(
+                  name
+                  + ": "
+                  + str(generated[name])
+              )
+
+
+          print(
+              "=========================================="
+          )
+
+
+          # Scene 1 is required.
+          if not Path("scene1.jpg").exists():
+
+              raise SystemExit(
+                  "Scene 1 could not be generated."
+              )
+
+
+          # If Scene 2 failed, reuse Scene 1.
+          if not Path("scene2.jpg").exists():
+
+              print(
+                  "Scene 2 unavailable. Reusing Scene 1."
+              )
+
+              shutil.copyfile(
+                  "scene1.jpg",
+                  "scene2.jpg"
+              )
+
+
+          # If Scene 3 failed, reuse Scene 2.
+          if not Path("scene3.jpg").exists():
+
+              print(
+                  "Scene 3 unavailable. Reusing Scene 2."
+              )
+
+              shutil.copyfile(
+                  "scene2.jpg",
+                  "scene3.jpg"
+              )
+
+
+          # --------------------------------------------------------
+          # SAVE PROMPTS FOR INSPECTION
+          # --------------------------------------------------------
+
+          with open(
+              "scene_prompts.txt",
+              "w",
+              encoding="utf-8"
+          ) as file:
+
+              for index, item in enumerate(
+                  SCENES,
+                  start=1
+              ):
+
+                  file.write(
+                      "SCENE "
+                      + str(index)
+                      + "\n"
+                  )
+
+                  file.write(
+                      item[1]
+                      + "\n\n"
+                  )
+
+
+          print()
+          print(
+              "All scene files are ready."
+          )
+
           PY
 
-      # ============================================================
-      # GENERATE SCENE 2
-      # ============================================================
-      - name: Generate Scene 2
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
+          python3 generate_scenes.py
 
-          echo "======================================"
-          echo "GENERATING SCENE 2"
-          echo "======================================"
-
-          curl -sS \
-            --retry 3 \
-            --retry-delay 3 \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/black-forest-labs/flux-1-schnell" \
-            -X POST \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "prompt": "A wholesome family friendly cinematic close-up photograph of a fictional young Indian child, around three years old, cheerful face, round cheeks, large expressive brown eyes, short black hair, funny surprised expression, wearing a bright yellow T-shirt and blue shorts, standing near the entrance of a colorful Indian home, warm natural daylight, realistic photography, professional camera, shallow depth of field",
-              "steps": 4,
-              "seed": 12345
-            }' \
-            -o scene2.json
-
-          python3 - <<'PY'
-          import json
-          import base64
-          import sys
-
-          with open("scene2.json", "r") as f:
-              data = json.load(f)
-
-          if not data.get("success", False):
-              print("Cloudflare response:")
-              print(json.dumps(data, indent=2))
-              sys.exit("Scene 2 failed")
-
-          image = data["result"]["image"]
-
-          with open("scene2.png", "wb") as f:
-              f.write(base64.b64decode(image))
-
-          print("Scene 2 created successfully")
-          PY
 
       # ============================================================
-      # GENERATE SCENE 3
-      # ============================================================
-      - name: Generate Scene 3
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-
-          echo "======================================"
-          echo "GENERATING SCENE 3"
-          echo "======================================"
-
-          curl -sS \
-            --retry 3 \
-            --retry-delay 3 \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/black-forest-labs/flux-1-schnell" \
-            -X POST \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "prompt": "A wholesome family friendly cinematic photograph of a cheerful fictional young Indian child smiling happily outdoors, wearing a bright yellow T-shirt and blue shorts, colorful residential neighborhood in India, sunny natural daylight, realistic photography, natural proportions, professional camera, detailed face",
-              "steps": 4,
-              "seed": 54321
-            }' \
-            -o scene3.json
-
-          python3 - <<'PY'
-          import json
-          import base64
-
-          with open("scene3.json", "r") as f:
-              data = json.load(f)
-
-          if data.get("success", False):
-
-              image = data["result"]["image"]
-
-              with open("scene3.png", "wb") as f:
-                  f.write(base64.b64decode(image))
-
-              print("Scene 3 created successfully")
-
-          else:
-
-              print("Scene 3 was rejected.")
-              print(json.dumps(data, indent=2))
-
-              with open("scene3_retry", "w") as f:
-                  f.write("retry")
-
-          PY
-
-      # ============================================================
-      # SCENE 3 FALLBACK
-      # ============================================================
-      - name: Generate Scene 3 fallback
-        if: always()
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-
-          if [ -f scene3.png ]; then
-            echo "Scene 3 already exists."
-            exit 0
-          fi
-
-          echo "======================================"
-          echo "SCENE 3 FALLBACK"
-          echo "======================================"
-
-          curl -sS \
-            --retry 3 \
-            --retry-delay 3 \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/black-forest-labs/flux-1-schnell" \
-            -X POST \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "prompt": "Wholesome family friendly cinematic photograph, cheerful young person in colorful casual clothing, smiling outdoors on a sunny Indian residential street, natural daylight, realistic professional photography",
-              "steps": 4,
-              "seed": 98765
-            }' \
-            -o scene3_fallback.json
-
-          python3 - <<'PY'
-          import json
-          import base64
-          import sys
-
-          with open("scene3_fallback.json", "r") as f:
-              data = json.load(f)
-
-          if not data.get("success", False):
-              print(json.dumps(data, indent=2))
-              sys.exit("Scene 3 fallback failed")
-
-          image = data["result"]["image"]
-
-          with open("scene3.png", "wb") as f:
-              f.write(base64.b64decode(image))
-
-          print("Scene 3 fallback created successfully")
-          PY
-
-      # ============================================================
-      # CREATE HINDI VOICE
+      # 4. CREATE HINDI SCRIPT + REALISTIC TTS
       # ============================================================
       - name: Create Hindi voice
+        shell: bash
         run: |
 
-          echo "======================================"
-          echo "CREATING HINDI VOICE"
-          echo "======================================"
+          set -euo pipefail
 
           cat > script.txt <<'EOF'
-          मम्मी, आज मैंने स्कूल में एक राज़ सीखा।
-          क्या राज़?
-          होमवर्क छुपा दो तो टीचर खुद ढूंढने आ जाती हैं!
+          बच्चा 1: मम्मी, आज मैंने स्कूल में एक राज़ सीखा!
+          बच्चा 2: अच्छा? कैसा राज़?
+          बच्चा 1: होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!
           EOF
 
-          edge-tts \
-            --voice hi-IN-MadhurNeural \
-            --rate "+10%" \
-            --pitch "+5Hz" \
-            --text "$(cat script.txt)" \
-            --write-media voice.mp3
+          echo "Hindi script:"
+          cat script.txt
+          echo ""
 
+          # Child-like voice
+          edge-tts \
+            --voice "hi-IN-SwaraNeural" \
+            --rate "+8%" \
+            --pitch "+15Hz" \
+            --text "मम्मी, आज मैंने स्कूल में एक राज़ सीखा!" \
+            --write-media child1.mp3
+
+          # Adult voice
+          edge-tts \
+            --voice "hi-IN-MadhurNeural" \
+            --rate "+3%" \
+            --pitch "+0Hz" \
+            --text "अच्छा? कैसा राज़?" \
+            --write-media adult.mp3
+
+          # Child-like punchline
+          edge-tts \
+            --voice "hi-IN-SwaraNeural" \
+            --rate "+8%" \
+            --pitch "+15Hz" \
+            --text "होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!" \
+            --write-media child2.mp3
+
+          # Convert everything to WAV.
           ffmpeg -y \
-            -i voice.mp3 \
+            -i child1.mp3 \
             -ar 44100 \
             -ac 2 \
+            child1.wav
+
+          ffmpeg -y \
+            -i adult.mp3 \
+            -ar 44100 \
+            -ac 2 \
+            adult.wav
+
+          ffmpeg -y \
+            -i child2.mp3 \
+            -ar 44100 \
+            -ac 2 \
+            child2.wav
+
+          # Small pauses between dialogue lines.
+          ffmpeg -y \
+            -f lavfi \
+            -i "anullsrc=r=44100:cl=stereo" \
+            -t 0.12 \
+            pause.wav
+
+          # Build concat list.
+          printf "file '%s'\n" "$PWD/child1.wav" > audio_concat.txt
+          printf "file '%s'\n" "$PWD/pause.wav" >> audio_concat.txt
+          printf "file '%s'\n" "$PWD/adult.wav" >> audio_concat.txt
+          printf "file '%s'\n" "$PWD/pause.wav" >> audio_concat.txt
+          printf "file '%s'\n" "$PWD/child2.wav" >> audio_concat.txt
+
+          ffmpeg -y \
+            -f concat \
+            -safe 0 \
+            -i audio_concat.txt \
+            -c:a pcm_s16le \
             voice.wav
 
-          echo "Hindi voice created"
+          echo "Hindi voice created."
+
 
       # ============================================================
-      # CREATE SCENE 1 VIDEO
+      # 5. CREATE SCENE 1 VIDEO
       # ============================================================
       - name: Create Scene 1 video
+        shell: bash
         run: |
+
+          set -euo pipefail
 
           ffmpeg -y \
             -loop 1 \
-            -i scene1.png \
+            -i scene1.jpg \
             -t 3 \
             -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0008,1.08)':d=90:s=1080x1920:fps=30" \
             -an \
             -c:v libx264 \
             -preset veryfast \
+            -crf 23 \
             -pix_fmt yuv420p \
             scene1.mp4
 
+
       # ============================================================
-      # CREATE SCENE 2 VIDEO
+      # 6. CREATE SCENE 2 VIDEO
       # ============================================================
       - name: Create Scene 2 video
+        shell: bash
         run: |
+
+          set -euo pipefail
 
           ffmpeg -y \
             -loop 1 \
-            -i scene2.png \
+            -i scene2.jpg \
             -t 3 \
-            -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.001,1.10)':d=90:s=1080x1920:fps=30" \
+            -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0010,1.10)':d=90:s=1080x1920:fps=30" \
             -an \
             -c:v libx264 \
             -preset veryfast \
+            -crf 23 \
             -pix_fmt yuv420p \
             scene2.mp4
 
+
       # ============================================================
-      # CREATE SCENE 3 VIDEO
+      # 7. CREATE SCENE 3 VIDEO
       # ============================================================
       - name: Create Scene 3 video
+        shell: bash
         run: |
+
+          set -euo pipefail
 
           ffmpeg -y \
             -loop 1 \
-            -i scene3.png \
+            -i scene3.jpg \
             -t 3 \
             -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0012,1.12)':d=90:s=1080x1920:fps=30" \
             -an \
             -c:v libx264 \
             -preset veryfast \
+            -crf 23 \
             -pix_fmt yuv420p \
             scene3.mp4
 
+
       # ============================================================
-      # JOIN VIDEOS
+      # 8. JOIN ALL THREE VIDEO SCENES
       # ============================================================
       - name: Join scenes
+        shell: bash
         run: |
 
-          echo "file '$PWD/scene1.mp4'" > concat.txt
-          echo "file '$PWD/scene2.mp4'" >> concat.txt
-          echo "file '$PWD/scene3.mp4'" >> concat.txt
+          set -euo pipefail
 
           ffmpeg -y \
-            -f concat \
-            -safe 0 \
-            -i concat.txt \
-            -c copy \
+            -i scene1.mp4 \
+            -i scene2.mp4 \
+            -i scene3.mp4 \
+            -filter_complex \
+            "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]" \
+            -map "[v]" \
+            -c:v libx264 \
+            -preset veryfast \
+            -crf 23 \
+            -pix_fmt yuv420p \
             silent_video.mp4
 
+
       # ============================================================
-      # ADD HINDI VOICE
+      # 9. ADD HINDI VOICE
       # ============================================================
       - name: Add Hindi voice
+        shell: bash
         run: |
+
+          set -euo pipefail
 
           ffmpeg -y \
             -i silent_video.mp4 \
@@ -360,15 +702,23 @@ jobs:
             -shortest \
             final_toddler_short.mp4
 
+          test -s final_toddler_short.mp4
+
+          echo "Final video created."
+
+
       # ============================================================
-      # VIDEO INFORMATION
+      # 10. VERIFY OUTPUT
       # ============================================================
-      - name: Check final video
+      - name: Verify final video
+        shell: bash
         run: |
 
-          echo "======================================"
+          set -euo pipefail
+
+          echo "=========================================="
           echo "FINAL VIDEO INFORMATION"
-          echo "======================================"
+          echo "=========================================="
 
           ffprobe \
             -v error \
@@ -377,66 +727,7 @@ jobs:
             -of default=noprint_wrappers=1 \
             final_toddler_short.mp4
 
-      # ============================================================
-      # YOUTUBE METADATA
-      # ============================================================
-      - name: Create YouTube metadata
-        run: |
+          echo "=========================================="
 
           python3 - <<'PY'
-
-          import json
-
-          metadata = {
-              "title": "जब बच्चे ने होमवर्क का राज़ बताया 😂",
-              "description": "एक छोटे बच्चे का मासूम लेकिन मज़ेदार जवाब 😂",
-              "language": "Hindi",
-              "category": "Entertainment",
-              "format": "YouTube Shorts",
-              "aspect_ratio": "9:16",
-              "duration": "9 seconds",
-              "hashtags": [
-                  "#shorts",
-                  "#hindi",
-                  "#funny",
-                  "#comedy",
-                  "#viral"
-              ]
-          }
-
-          with open(
-              "youtube_metadata.json",
-              "w",
-              encoding="utf-8"
-          ) as f:
-
-              json.dump(
-                  metadata,
-                  f,
-                  ensure_ascii=False,
-                  indent=2
-              )
-
-          print("YouTube metadata created")
-
-          PY
-
-      # ============================================================
-      # UPLOAD EVERYTHING
-      # ============================================================
-      - name: Upload final files
-        uses: actions/upload-artifact@v4
-        with:
-          name: toddler-video-test
-          path: |
-            final_toddler_short.mp4
-            scene1.png
-            scene2.png
-            scene3.png
-            scene1.mp4
-            scene2.mp4
-            scene3.mp4
-            voice.mp3
-            voice.wav
-            script.txt
-            youtube_metadata.json
+    
