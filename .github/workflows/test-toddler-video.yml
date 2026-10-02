@@ -9,7 +9,7 @@ permissions:
 jobs:
   generate-video:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
 
@@ -26,7 +26,8 @@ jobs:
 
           python3 -m pip install \
             --break-system-packages \
-            edge-tts
+            edge-tts \
+            Pillow
 
           mkdir -p artifacts
 
@@ -58,7 +59,7 @@ jobs:
 
 
       # ============================================================
-      # 3. GENERATE THREE TODDLER SCENES
+      # 3. GENERATE THREE DISTINCT IMAGES
       # ============================================================
       - name: Generate toddler scenes
         shell: bash
@@ -74,13 +75,18 @@ jobs:
             local prompt="$1"
             local output="$2"
             local response="$3"
+            local raw_image="${output}.raw"
+
             local http_code
-            local encoded
+
+            rm -f "$output" "$response" "$raw_image"
 
             http_code="$(
               curl -sS \
                 --retry 3 \
                 --retry-delay 2 \
+                --connect-timeout 20 \
+                --max-time 180 \
                 -o "$response" \
                 -w "%{http_code}" \
                 "$API_URL" \
@@ -90,8 +96,7 @@ jobs:
                 --data "$(
                   jq -n \
                     --arg prompt "$prompt" \
-                    --argjson steps 4 \
-                    '{prompt: $prompt, steps: $steps}'
+                    '{prompt: $prompt, steps: 4}'
                 )"
             )"
 
@@ -109,145 +114,115 @@ jobs:
               return 1
             fi
 
-            encoded="$(jq -r '.result.image // empty' "$response")"
+            jq -e '.result.image | type == "string" and length > 0' \
+              "$response" >/dev/null
 
-            if [ -z "$encoded" ]; then
-              echo "Cloudflare response did not contain result.image:"
-              cat "$response"
-              return 1
-            fi
+            jq -r '.result.image' "$response" | base64 --decode > "$raw_image"
 
-            printf '%s' "$encoded" | base64 --decode > "$output"
+            test -s "$raw_image"
+
+            # Cloudflare's returned bytes may be JPEG/PNG depending on
+            # the response. FFmpeg detects the actual image format.
+            ffmpeg -hide_banner -loglevel error -y \
+              -i "$raw_image" \
+              -frames:v 1 \
+              -q:v 2 \
+              "$output"
 
             test -s "$output"
 
-            # Let FFmpeg verify the returned image bytes.
-            ffprobe \
-              -v error \
-              -select_streams v:0 \
-              -show_entries stream=codec_name \
-              -of default=noprint_wrappers=1:nokey=1 \
-              "$output" >/dev/null
+            rm -f "$raw_image"
 
             echo "Created $output"
           }
 
 
-          # ----------------------------------------------------------
-          # Same fictional character description
-          # ----------------------------------------------------------
+          generate_or_retry() {
+            local prompt="$1"
+            local fallback="$2"
+            local output="$3"
+            local response="$4"
 
-          character="wholesome family-friendly fictional Indian toddler boy, about three years old, small chubby body, round cheeks, large expressive brown eyes, short black hair, bright yellow T-shirt, blue shorts"
+            if generate_image "$prompt" "$output" "$response"; then
+              return 0
+            fi
+
+            echo "Primary generation failed."
+            echo "Trying fallback prompt..."
+
+            generate_image "$fallback" "$output" "${response}.fallback"
+          }
 
 
-          scene1="wide full-body shot, toddler standing alone beside a small red toy car on a sunny Indian residential street, smiling directly at camera, clearly visible yellow T-shirt and blue shorts, warm natural daylight, realistic professional photography, vertical 9:16 composition"
+          CHARACTER="wholesome family-friendly fictional Indian toddler boy, approximately three years old, round cheeks, large expressive brown eyes, short black hair, bright yellow T-shirt and blue shorts, natural toddler proportions, photorealistic"
 
-          scene2="medium close-up at the doorway of an Indian home, toddler looking sideways with a funny confused expression toward his mother, mother only partly visible in the background, clearly different camera angle and setting from other scenes, warm natural daylight, realistic professional photography, vertical 9:16 composition"
+          SCENE1="${CHARACTER}, smiling happily beside a small red toy car on a sunny Indian residential street, full-body wide shot, warm morning sunlight, realistic neighborhood background, professional cinematic photography, vertical composition, no text, no watermark"
 
-          scene3="close-up of the same toddler laughing proudly while holding a school notebook with a simple blank cover, colorful Indian neighborhood courtyard, different pose and framing from the other scenes, warm natural daylight, realistic professional photography, vertical 9:16 composition"
+          SCENE2="${CHARACTER}, standing at the doorway of a colorful Indian home, funny surprised expression while looking sideways toward his mother who is softly visible in the background, medium shot, different location and pose from scene one, warm daylight, professional cinematic photography, vertical composition, no text, no watermark"
 
+          SCENE3="${CHARACTER}, sitting on a small chair in an Indian courtyard, laughing while holding a school notebook with a plain blank cover, close-up three-quarter portrait, clearly different pose and framing from previous scenes, warm daylight, professional cinematic photography, vertical composition, no text, no watermark"
 
-          fallback="wholesome family-friendly photograph of a fictional young Indian child smiling outdoors, colorful casual clothing, sunny Indian neighborhood, natural daylight, realistic professional photography, vertical composition"
+          FALLBACK="wholesome family-friendly photograph of a cheerful fictional Indian child in colorful casual clothing, smiling outdoors in a sunny Indian neighborhood, natural daylight, realistic professional photography, vertical composition, no text, no watermark"
 
-
-          # ----------------------------------------------------------
-          # Scene 1
-          # ----------------------------------------------------------
 
           echo "Generating Scene 1..."
-
-          if ! generate_image \
-            "$character, $scene1" \
-            "scene1.jpg" \
-            "scene1.json"
-          then
-            echo "Scene 1 primary prompt failed."
-            echo "Trying fallback prompt..."
-
-            generate_image \
-              "$fallback" \
-              "scene1.jpg" \
-              "scene1_fallback.json"
-          fi
-
-
-          # ----------------------------------------------------------
-          # Scene 2
-          # ----------------------------------------------------------
+          generate_or_retry "$SCENE1" "$FALLBACK" "scene1.jpg" "scene1.json"
 
           echo "Generating Scene 2..."
-
-          if ! generate_image \
-            "$character, $scene2" \
-            "scene2.jpg" \
-            "scene2.json"
-          then
-            echo "Scene 2 primary prompt failed."
-            echo "Trying fallback prompt..."
-
-            generate_image \
-              "$fallback" \
-              "scene2.jpg" \
-              "scene2_fallback.json"
-          fi
-
-
-          # ----------------------------------------------------------
-          # Scene 3
-          # ----------------------------------------------------------
+          generate_or_retry "$SCENE2" "$FALLBACK" "scene2.jpg" "scene2.json"
 
           echo "Generating Scene 3..."
-
-          if ! generate_image \
-            "$character, $scene3" \
-            "scene3.jpg" \
-            "scene3.json"
-          then
-            echo "Scene 3 primary prompt failed."
-            echo "Trying fallback prompt..."
-
-            generate_image \
-              "$fallback" \
-              "scene3.jpg" \
-              "scene3_fallback.json"
-          fi
+          generate_or_retry "$SCENE3" "$FALLBACK" "scene3.jpg" "scene3.json"
 
 
           # ----------------------------------------------------------
-          # Verify images exist
+          # Verify image files.
           # ----------------------------------------------------------
 
-          for file in scene1.jpg scene2.jpg scene3.jpg
-          do
-            if [ ! -s "$file" ]; then
-              echo "::error::Missing image: $file"
-              exit 1
-            fi
-          done
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import hashlib
+          import sys
+
+          files = [
+              Path("scene1.jpg"),
+              Path("scene2.jpg"),
+              Path("scene3.jpg")
+          ]
+
+          for path in files:
+              if not path.is_file() or path.stat().st_size < 1000:
+                  sys.exit(f"Invalid or missing image: {path}")
+
+              try:
+                  with Image.open(path) as image:
+                      image.verify()
+              except Exception as error:
+                  sys.exit(f"Image verification failed for {path}: {error}")
+
+          hashes = [
+              hashlib.sha256(path.read_bytes()).hexdigest()
+              for path in files
+          ]
+
+          if len(set(hashes)) != 3:
+              print("Image hashes:")
+              for path, digest in zip(files, hashes):
+                  print(path, digest)
+              sys.exit("Generated scene images are identical.")
+
+          print("All three scene images are valid and distinct.")
+          PY
 
 
-          # Remove API response JSON files from the final package.
           rm -f \
             scene1.json \
             scene2.json \
             scene3.json \
-            scene1_fallback.json \
-            scene2_fallback.json \
-            scene3_fallback.json
-
-
-          # Catch the exact failure mode where the same image is accidentally
-          # reused for every scene. Different prompts are used above; if the
-          # API nevertheless returns identical files, fail rather than publish
-          # a video that only shows one picture.
-          image_hashes="$(sha256sum scene1.jpg scene2.jpg scene3.jpg | awk '{print $1}' | sort -u | wc -l)"
-          if [ "$image_hashes" -ne 3 ]; then
-            echo "::error::Scene images are identical. Regenerate the workflow run."
-            sha256sum scene1.jpg scene2.jpg scene3.jpg
-            exit 1
-          fi
-
-          echo "All three distinct toddler scenes generated successfully."
+            scene1.json.fallback \
+            scene2.json.fallback \
+            scene3.json.fallback
 
 
       # ============================================================
@@ -258,20 +233,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          printf '%s\n' \
-            'मम्मी, आज मैंने स्कूल में एक राज़ सीखा!' \
-            > child1.txt
+          cat > child1.txt <<'EOF'
+          मम्मी, आज मैंने स्कूल में एक राज़ सीखा!
+          EOF
 
-          printf '%s\n' \
-            'अच्छा? कैसा राज़?' \
-            > adult.txt
+          cat > mother.txt <<'EOF'
+          अच्छा? कैसा राज़?
+          EOF
 
-          printf '%s\n' \
-            'होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!' \
-            > child2.txt
+          cat > child2.txt <<'EOF'
+          होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!
+          EOF
 
 
-          # Child line 1
           edge-tts \
             --voice "hi-IN-SwaraNeural" \
             --rate="+8%" \
@@ -279,17 +253,13 @@ jobs:
             --file child1.txt \
             --write-media child1.mp3
 
-
-          # Mother line
           edge-tts \
             --voice "hi-IN-MadhurNeural" \
             --rate="+3%" \
             --pitch="+0Hz" \
-            --file adult.txt \
-            --write-media adult.mp3
+            --file mother.txt \
+            --write-media mother.mp3
 
-
-          # Child punchline
           edge-tts \
             --voice "hi-IN-SwaraNeural" \
             --rate="+8%" \
@@ -298,52 +268,56 @@ jobs:
             --write-media child2.mp3
 
 
-          test -s child1.mp3
-          test -s adult.mp3
-          test -s child2.mp3
+          for file in child1.mp3 mother.mp3 child2.mp3
+          do
+            if [ ! -s "$file" ]; then
+              echo "::error::TTS output missing: $file"
+              exit 1
+            fi
+          done
 
 
-          # Convert audio
-          ffmpeg -y \
+          # Convert each line to a standard PCM WAV.
+          ffmpeg -hide_banner -loglevel error -y \
             -i child1.mp3 \
             -ar 44100 \
             -ac 2 \
             child1.wav
 
-          ffmpeg -y \
-            -i adult.mp3 \
+          ffmpeg -hide_banner -loglevel error -y \
+            -i mother.mp3 \
             -ar 44100 \
             -ac 2 \
-            adult.wav
+            mother.wav
 
-          ffmpeg -y \
+          ffmpeg -hide_banner -loglevel error -y \
             -i child2.mp3 \
             -ar 44100 \
             -ac 2 \
             child2.wav
 
 
-          # Small dialogue pause
-          ffmpeg -y \
+          # Short natural pauses.
+          ffmpeg -hide_banner -loglevel error -y \
             -f lavfi \
             -i "anullsrc=r=44100:cl=stereo" \
-            -t 0.12 \
+            -t 0.15 \
             pause.wav
 
 
-          # Build audio order
-          printf "file '%s/child1.wav'\n" "$PWD" > audio_concat.txt
-          printf "file '%s/pause.wav'\n" "$PWD" >> audio_concat.txt
-          printf "file '%s/adult.wav'\n" "$PWD" >> audio_concat.txt
-          printf "file '%s/pause.wav'\n" "$PWD" >> audio_concat.txt
-          printf "file '%s/child2.wav'\n" "$PWD" >> audio_concat.txt
+          {
+            printf "file '%s/child1.wav'\n" "$PWD"
+            printf "file '%s/pause.wav'\n" "$PWD"
+            printf "file '%s/mother.wav'\n" "$PWD"
+            printf "file '%s/pause.wav'\n" "$PWD"
+            printf "file '%s/child2.wav'\n" "$PWD"
+          } > voice_concat.txt
 
 
-          # Combine voice
-          ffmpeg -y \
+          ffmpeg -hide_banner -loglevel error -y \
             -f concat \
             -safe 0 \
-            -i audio_concat.txt \
+            -i voice_concat.txt \
             -c:a pcm_s16le \
             voice.wav
 
@@ -351,124 +325,74 @@ jobs:
           test -s voice.wav
 
 
-          printf '%s\n' \
-            'मम्मी, आज मैंने स्कूल में एक राज़ सीखा!' \
-            'अच्छा? कैसा राज़?' \
-            'होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!' \
-            > script.txt
+          # Verify the source narration isn't silent.
+          ffmpeg -hide_banner -loglevel error \
+            -i voice.wav \
+            -af volumedetect \
+            -f null - 2> voice_volume.log
 
 
-          echo "Hindi voice created successfully."
+          mean_volume="$(
+            sed -n 's/.*mean_volume: \([-0-9.]*\) dB.*/\1/p' \
+              voice_volume.log | tail -n 1
+          )"
+
+
+          if [ -z "$mean_volume" ] || [ "$mean_volume" = "-inf" ]; then
+            echo "::error::TTS audio is silent or could not be measured."
+            cat voice_volume.log
+            exit 1
+          fi
+
+
+          if ! awk -v v="$mean_volume" 'BEGIN { exit !(v > -45) }'
+          then
+            echo "::error::TTS audio is too quiet: ${mean_volume} dB"
+            exit 1
+          fi
+
+
+          echo "Hindi narration created."
+          echo "Narration mean volume: ${mean_volume} dB"
+
+
+          cat > script.txt <<'EOF'
+          मम्मी, आज मैंने स्कूल में एक राज़ सीखा!
+          अच्छा? कैसा राज़?
+          होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!
+          EOF
 
 
       # ============================================================
-      # 5. CREATE SCENE VIDEOS
+      # 5. CREATE FINAL VIDEO DIRECTLY FROM THREE IMAGES + AUDIO
       # ============================================================
-      - name: Create Scene 1 video
+      - name: Create final vertical video
         shell: bash
         run: |
           set -euo pipefail
 
-          ffmpeg -y \
-            -loop 1 \
-            -framerate 30 \
-            -i scene1.jpg \
-            -t 3 \
-            -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0008,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,format=yuv420p" \
-            -an \
-            -c:v libx264 \
-            -preset veryfast \
-            -crf 23 \
-            -movflags +faststart \
-            scene1.mp4
-
-          test -s scene1.mp4
-
-
-      - name: Create Scene 2 video
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          ffmpeg -y \
-            -loop 1 \
-            -framerate 30 \
-            -i scene2.jpg \
-            -t 3 \
-            -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0010,1.10)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,format=yuv420p" \
-            -an \
-            -c:v libx264 \
-            -preset veryfast \
-            -crf 23 \
-            -movflags +faststart \
-            scene2.mp4
-
-          test -s scene2.mp4
-
-
-      - name: Create Scene 3 video
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          ffmpeg -y \
-            -loop 1 \
-            -framerate 30 \
-            -i scene3.jpg \
-            -t 3 \
-            -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0012,1.12)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,format=yuv420p" \
-            -an \
-            -c:v libx264 \
-            -preset veryfast \
-            -crf 23 \
-            -movflags +faststart \
-            scene3.mp4
-
-          test -s scene3.mp4
-
-
-      # ============================================================
-      # 6. JOIN SCENES
-      # ============================================================
-      - name: Join scenes
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          ffmpeg -y \
-            -i scene1.mp4 \
-            -i scene2.mp4 \
-            -i scene3.mp4 \
-            -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]" \
+          # Three completely separate image inputs are used here.
+          # Each produces exactly 3 seconds, then concat creates the
+          # final 9-second video with hard scene changes.
+          ffmpeg -hide_banner -loglevel error -y \
+            -loop 1 -framerate 30 -i scene1.jpg \
+            -loop 1 -framerate 30 -i scene2.jpg \
+            -loop 1 -framerate 30 -i scene3.jpg \
+            -i voice.wav \
+            -filter_complex "\
+              [0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0008,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,trim=duration=3,setpts=PTS-STARTPTS[v0];\
+              [1:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0010,1.10)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,trim=duration=3,setpts=PTS-STARTPTS[v1];\
+              [2:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0012,1.12)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,trim=duration=3,setpts=PTS-STARTPTS[v2];\
+              [v0][v1][v2]concat=n=3:v=1:a=0[v];\
+              [3:a]aresample=44100,volume=1.8,apad,atrim=duration=9,asetpts=PTS-STARTPTS[a]" \
             -map "[v]" \
+            -map "[a]" \
+            -t 9 \
+            -r 30 \
             -c:v libx264 \
             -preset veryfast \
             -crf 23 \
             -pix_fmt yuv420p \
-            -movflags +faststart \
-            silent_video.mp4
-
-          test -s silent_video.mp4
-
-
-      # ============================================================
-      # 7. ADD HINDI VOICE
-      # ============================================================
-      - name: Add Hindi voice
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # Keep the video at 9 seconds and guarantee that the narration is
-          # present from the beginning, padded if short, and never runs past it.
-          ffmpeg -y \
-            -i silent_video.mp4 \
-            -i voice.wav \
-            -map 0:v:0 \
-            -map 1:a:0 \
-            -af "aresample=44100,volume=1.5,apad=pad_dur=9,atrim=start=0:duration=9" \
-            -t 9 \
-            -c:v copy \
             -c:a aac \
             -b:a 192k \
             -ar 44100 \
@@ -476,13 +400,14 @@ jobs:
             -movflags +faststart \
             final_toddler_short.mp4
 
+
           test -s final_toddler_short.mp4
 
-          echo "Final video created successfully."
+          echo "Final video created."
 
 
       # ============================================================
-      # 8. VERIFY FINAL VIDEO
+      # 6. VERIFY FINAL VIDEO + AUDIO + THREE SCENES
       # ============================================================
       - name: Verify final video
         shell: bash
@@ -493,85 +418,77 @@ jobs:
 
 
           width="$(
-            ffprobe \
-              -v error \
+            ffprobe -v error \
               -select_streams v:0 \
               -show_entries stream=width \
               -of csv=p=0 \
               final_toddler_short.mp4
           )"
 
+
           height="$(
-            ffprobe \
-              -v error \
+            ffprobe -v error \
               -select_streams v:0 \
               -show_entries stream=height \
               -of csv=p=0 \
               final_toddler_short.mp4
           )"
 
+
           video_codec="$(
-            ffprobe \
-              -v error \
+            ffprobe -v error \
               -select_streams v:0 \
               -show_entries stream=codec_name \
               -of csv=p=0 \
               final_toddler_short.mp4
           )"
 
+
           audio_codec="$(
-            ffprobe \
-              -v error \
+            ffprobe -v error \
               -select_streams a:0 \
               -show_entries stream=codec_name \
               -of csv=p=0 \
               final_toddler_short.mp4
           )"
 
-          duration="$(
-            ffprobe \
-              -v error \
+
+          video_duration="$(
+            ffprobe -v error \
               -show_entries format=duration \
               -of csv=p=0 \
               final_toddler_short.mp4
           )"
 
+
           audio_duration="$(
-            ffprobe \
-              -v error \
+            ffprobe -v error \
               -select_streams a:0 \
               -show_entries stream=duration \
               -of csv=p=0 \
               final_toddler_short.mp4
           )"
 
-          # Detect a missing or completely silent audio track.
-          audio_stats="$(ffmpeg -hide_banner -i final_toddler_short.mp4 -map 0:a:0 -af volumedetect -f null - 2>&1 || true)"
-          mean_volume="$(printf '%s\\n' "$audio_stats" | sed -n 's/.*mean_volume: \\([-0-9.]*\\) dB.*/\\1/p' | tail -n 1)"
-          max_volume="$(printf '%s\\n' "$audio_stats" | sed -n 's/.*max_volume: \\([-0-9.]*\\) dB.*/\\1/p' | tail -n 1)"
-
 
           echo "=========================================="
-          echo "FINAL VIDEO CHECK"
+          echo "VIDEO CHECK"
           echo "=========================================="
           echo "Resolution: ${width}x${height}"
           echo "Video codec: ${video_codec}"
           echo "Audio codec: ${audio_codec}"
-          echo "Audio duration: ${audio_duration:-unknown} seconds"
-          echo "Audio mean volume: ${mean_volume:-unknown} dB"
-          echo "Audio peak volume: ${max_volume:-unknown} dB"
-          echo "Duration: ${duration} seconds"
+          echo "Video duration: ${video_duration} seconds"
+          echo "Audio duration: ${audio_duration} seconds"
           echo "=========================================="
 
 
           if [ "$width" != "1080" ]; then
-            echo "::error::Wrong video width: $width"
+            echo "::error::Wrong width: $width"
             exit 1
           fi
 
 
           if [ "$height" != "1920" ]; then
-            echo "::error::Wrong video height: $height"
+            echo "::error::Wrong height: $height"
             exit 1
           fi
 
@@ -587,65 +504,146 @@ jobs:
             exit 1
           fi
 
-          if [ -z "$audio_duration" ] || ! awk -v d="$audio_duration" 'BEGIN { exit !(d > 0.5) }'; then
-            echo "::error::Audio stream is missing or too short."
-            exit 1
-          fi
 
-          if [ -z "$mean_volume" ] || [ "$mean_volume" = "-inf" ]; then
-            echo "::error::Audio is silent or could not be measured."
-            exit 1
-          fi
-
-          if ! awk -v v="$mean_volume" 'BEGIN { exit !(v > -45) }'; then
-            echo "::error::Audio is too quiet (mean volume: $mean_volume dB)."
+          if ! awk -v d="$video_duration" \
+            'BEGIN { exit !(d >= 8.8 && d <= 9.2) }'
+          then
+            echo "::error::Wrong video duration: $video_duration"
             exit 1
           fi
 
 
-          awk -v d="$duration" '
-            BEGIN {
-              if (d >= 8.8 && d <= 9.2) {
-                exit 0
-              }
-
-              exit 1
-            }
-          '
+          if ! awk -v d="$audio_duration" \
+            'BEGIN { exit !(d >= 8.0) }'
+          then
+            echo "::error::Audio track is missing or too short: $audio_duration"
+            exit 1
+          fi
 
 
-          echo "VIDEO VALIDATION PASSED."
+          # ----------------------------------------------------------
+          # Extract audio and calculate actual waveform level.
+          # This avoids unreliable parsing of FFmpeg log messages.
+          # ----------------------------------------------------------
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -i final_toddler_short.mp4 \
+            -map 0:a:0 \
+            -t 9 \
+            -ar 44100 \
+            -ac 1 \
+            verify_audio.wav
 
 
-      # ============================================================
-      # 9. CREATE YOUTUBE METADATA
-      # ============================================================
-      - name: Create YouTube metadata
-        shell: bash
-        run: |
-          set -euo pipefail
+          python3 - <<'PY'
+          import math
+          import struct
+          import wave
+          import sys
 
-          printf '%s\n' \
-            '{' \
-            '  "title": "जब बच्चे ने होमवर्क का राज़ बताया 😂",' \
-            '  "description": "एक छोटे बच्चे का मासूम लेकिन मज़ेदार जवाब 😂\n\n#shorts #funny #comedy #hindi #kids",' \
-            '  "language": "Hindi",' \
-            '  "format": "YouTube Shorts",' \
-            '  "aspect_ratio": "9:16",' \
-            '  "duration_seconds": 9,' \
-            '  "captions": false,' \
-            '  "visual_style": "photorealistic cinematic",' \
-            '  "image_model": "Cloudflare FLUX.1 Schnell"' \
-            '}' \
-            > youtube_metadata.json
+          with wave.open("verify_audio.wav", "rb") as audio:
+              channels = audio.getnchannels()
+              width = audio.getsampwidth()
+              frames = audio.readframes(audio.getnframes())
+
+          if width != 2:
+              sys.exit(f"Unexpected WAV sample width: {width}")
+
+          values = struct.unpack(
+              "<" + "h" * (len(frames) // 2),
+              frames
+          )
+
+          if not values:
+              sys.exit("No audio samples found.")
+
+          peak = max(abs(v) for v in values)
+          rms = math.sqrt(
+              sum(v * v for v in values) / len(values)
+          )
+
+          print(f"Audio samples: {len(values)}")
+          print(f"Audio peak: {peak}")
+          print(f"Audio RMS: {rms:.2f}")
+
+          if peak < 1000:
+              sys.exit("Audio waveform is effectively silent.")
+
+          if rms < 300:
+              sys.exit("Audio waveform is too quiet.")
+
+          print("AUDIO WAVEFORM VALIDATION PASSED")
+          PY
 
 
-          jq empty youtube_metadata.json
+          # ----------------------------------------------------------
+          # Verify that the three scene intervals are visually
+          # different inside the FINAL video itself.
+          # ----------------------------------------------------------
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -ss 1 \
+            -i final_toddler_short.mp4 \
+            -frames:v 1 \
+            -q:v 2 \
+            verify_scene1.jpg
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -ss 4 \
+            -i final_toddler_short.mp4 \
+            -frames:v 1 \
+            -q:v 2 \
+            verify_scene2.jpg
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -ss 7 \
+            -i final_toddler_short.mp4 \
+            -frames:v 1 \
+            -q:v 2 \
+            verify_scene3.jpg
 
 
-          echo "YouTube metadata created and validated."
+          python3 - <<'PY'
+          from PIL import Image
+          import sys
 
+          names = [
+              "verify_scene1.jpg",
+              "verify_scene2.jpg",
+              "verify_scene3.jpg"
+          ]
 
-      # ============================================================
-      # 10. PREPARE ARTIFACT
-      # ===============================================
+          images = [
+              Image.open(name).convert("RGB").resize((64, 64))
+              for name in names
+          ]
+
+          arrays = [
+              list(image.getdata())
+              for image in images
+          ]
+
+          def difference(a, b):
+              total = 0
+              count = len(a) * 3
+
+              for p1, p2 in zip(a, b):
+                  total += abs(p1[0] - p2[0])
+                  total += abs(p1[1] - p2[1])
+                  total += abs(p1[2] - p2[2])
+
+              return total / count
+
+          d12 = difference(arrays[0], arrays[1])
+          d13 = difference(arrays[0], arrays[2])
+          d23 = difference(arrays[1], arrays[2])
+
+          print(f"Scene difference 1->2: {d12:.2f}")
+          print(f"Scene difference 1->3: {d13:.2f}")
+          print(f"Scene difference 2->3: {d23:.2f}")
+
+          minimum = min(d12, d13, d23)
+
+          if minimum < 8:
+              sys.exit(
+                  "FINAL VIDEO SCENE CHECK FAI
