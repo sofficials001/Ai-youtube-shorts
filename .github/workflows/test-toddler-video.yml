@@ -51,11 +51,11 @@ jobs:
             exit 1
           fi
 
-          echo "Cloudflare secrets found."
+          echo "Cloudflare configuration found."
 
 
       # ============================================================
-      # 3. GENERATE ALL TODDLER SCENES
+      # 3. GENERATE THREE TODDLER IMAGES
       # ============================================================
       - name: Generate toddler scenes
         shell: bash
@@ -63,7 +63,6 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-
           set -euo pipefail
 
           cat > generate_scenes.py <<'PY'
@@ -75,7 +74,6 @@ jobs:
           import urllib.request
           from pathlib import Path
 
-
           ACCOUNT_ID = os.environ["CLOUDFLARE_ACCOUNT_ID"]
           API_TOKEN = os.environ["CLOUDFLARE_API_TOKEN"]
 
@@ -85,89 +83,43 @@ jobs:
               + "/ai/run/@cf/black-forest-labs/flux-1-schnell"
           )
 
-
-          # --------------------------------------------------------
-          # CHARACTER
-          # --------------------------------------------------------
-
           CHARACTER = (
-              "wholesome family-friendly fictional Indian boy, "
-              "three years old, cute round cheeks, "
+              "wholesome family friendly fictional Indian toddler boy, "
+              "about three years old, small chubby body, round cheeks, "
               "large expressive brown eyes, short black hair, "
-              "slightly chubby toddler proportions, "
-              "bright yellow T-shirt, blue shorts"
+              "cute innocent smile, yellow T-shirt, blue shorts"
           )
 
-
-          # --------------------------------------------------------
-          # SCENE PROMPTS
-          # --------------------------------------------------------
-
           SCENES = [
-
               (
                   "scene1.jpg",
                   CHARACTER
-                  + ", cheerful innocent smile, "
-                  + "standing on a clean Indian residential street, "
-                  + "warm natural daylight, realistic professional photography, "
-                  + "cinematic portrait, shallow depth of field"
+                  + ", cheerful smile, standing on a clean Indian "
+                  + "residential street, warm daylight, realistic "
+                  + "professional photography, cinematic portrait"
               ),
-
               (
                   "scene2.jpg",
                   CHARACTER
-                  + ", funny confused expression, "
-                  + "looking toward a family member near an Indian home entrance, "
-                  + "warm natural daylight, realistic professional photography, "
-                  + "cinematic close-up, shallow depth of field"
+                  + ", funny confused expression, looking toward a "
+                  + "family member, Indian home entrance, warm daylight, "
+                  + "realistic professional photography, cinematic close-up"
               ),
-
               (
                   "scene3.jpg",
                   CHARACTER
-                  + ", playful happy expression, "
-                  + "smiling after saying something clever, "
-                  + "colorful Indian neighborhood background, "
-                  + "warm natural daylight, realistic professional photography, "
-                  + "cinematic portrait, shallow depth of field"
+                  + ", playful happy expression, smiling after saying "
+                  + "something clever, Indian neighborhood, warm daylight, "
+                  + "realistic professional photography, cinematic portrait"
               )
-
           ]
 
-
-          FALLBACK_PROMPTS = [
-
-              (
-                  "scene1.jpg",
-                  "wholesome family-friendly photograph of a cheerful "
-                  "fictional Indian child with a round cute face, "
-                  "large expressive brown eyes, short black hair, "
-                  "bright yellow shirt, blue shorts, "
-                  "sunny residential neighborhood in India, "
-                  "natural light, realistic professional photography"
-              ),
-
-              (
-                  "scene2.jpg",
-                  "wholesome family-friendly photograph of the same "
-                  "fictional Indian child, smiling and looking curious, "
-                  "bright yellow shirt, blue shorts, "
-                  "Indian home entrance, natural daylight, "
-                  "realistic professional photography"
-              ),
-
-              (
-                  "scene3.jpg",
-                  "wholesome family-friendly photograph of the same "
-                  "fictional Indian child, cheerful playful smile, "
-                  "bright yellow shirt, blue shorts, "
-                  "sunny Indian neighborhood, "
-                  "natural daylight, realistic professional photography"
-              )
-
-          ]
-
+          FALLBACK = (
+              "wholesome family friendly photograph of a cheerful "
+              "fictional Indian child, cute round face, large brown eyes, "
+              "short black hair, colorful casual clothing, smiling outdoors "
+              "in an Indian neighborhood, natural daylight, realistic photography"
+          )
 
           def request_image(prompt):
               payload = {
@@ -195,12 +147,10 @@ jobs:
                       request,
                       timeout=120
                   ) as response:
-
                       raw = response.read()
 
               except urllib.error.HTTPError as error:
-
-                  response_body = error.read().decode(
+                  error_body = error.read().decode(
                       "utf-8",
                       errors="replace"
                   )
@@ -209,31 +159,26 @@ jobs:
                       "Cloudflare HTTP "
                       + str(error.code)
                       + ": "
-                      + response_body
+                      + error_body
                   )
 
               except Exception as error:
-
                   raise RuntimeError(
                       "Cloudflare request failed: "
                       + str(error)
                   )
-
 
               try:
                   data = json.loads(
                       raw.decode("utf-8")
                   )
               except Exception as error:
-
                   raise RuntimeError(
                       "Cloudflare returned invalid JSON: "
                       + str(error)
                   )
 
-
               if not data.get("success", False):
-
                   raise RuntimeError(
                       "Cloudflare error: "
                       + json.dumps(
@@ -242,24 +187,19 @@ jobs:
                       )
                   )
 
-
               result = data.get("result")
 
               if not isinstance(result, dict):
-
                   raise RuntimeError(
                       "Cloudflare response has no result object."
                   )
 
-
               encoded = result.get("image")
 
-              if not encoded:
-
+              if not isinstance(encoded, str) or not encoded:
                   raise RuntimeError(
                       "Cloudflare response contains no image."
                   )
-
 
               try:
                   image_bytes = base64.b64decode(
@@ -267,42 +207,36 @@ jobs:
                       validate=True
                   )
               except Exception as error:
-
                   raise RuntimeError(
                       "Invalid Base64 image: "
                       + str(error)
                   )
 
-
               if len(image_bytes) < 1000:
-
                   raise RuntimeError(
                       "Generated image is unexpectedly small."
                   )
 
-
               return image_bytes
 
-
-          def save_image(path, image_bytes):
-
-              Path(path).write_bytes(
+          def save_image(filename, image_bytes):
+              Path(filename).write_bytes(
                   image_bytes
               )
 
               print(
                   "Saved "
-                  + path
+                  + filename
                   + " ("
                   + str(len(image_bytes))
                   + " bytes)"
               )
 
+          previous_file = None
 
-          def generate_scene(
-              filename,
-              primary_prompt,
-              fallback_prompt
+          for number, (filename, prompt) in enumerate(
+              SCENES,
+              start=1
           ):
 
               print()
@@ -310,169 +244,75 @@ jobs:
                   "=========================================="
               )
               print(
-                  "Generating "
-                  + filename
+                  "GENERATING SCENE "
+                  + str(number)
               )
               print(
                   "=========================================="
               )
 
-              # ----------------------------------------------------
-              # PRIMARY REQUEST
-              # ----------------------------------------------------
-
               try:
-
-                  image = request_image(
-                      primary_prompt
-                  )
+                  image = request_image(prompt)
 
                   save_image(
                       filename,
                       image
                   )
 
-                  return True
+                  previous_file = filename
 
-              except Exception as error:
+              except Exception as first_error:
 
                   print(
                       "Primary prompt failed:"
                   )
 
                   print(
-                      str(error)
+                      str(first_error)
                   )
 
+                  try:
+                      print(
+                          "Trying safe fallback..."
+                      )
 
-              # ----------------------------------------------------
-              # FALLBACK REQUEST
-              # ----------------------------------------------------
+                      image = request_image(
+                          FALLBACK
+                      )
 
-              print(
-                  "Trying fallback prompt..."
-              )
+                      save_image(
+                          filename,
+                          image
+                      )
 
-              try:
+                      previous_file = filename
 
-                  image = request_image(
-                      fallback_prompt
-                  )
+                  except Exception as fallback_error:
 
-                  save_image(
-                      filename,
-                      image
-                  )
+                      print(
+                          "Fallback failed:"
+                      )
 
-                  return True
+                      print(
+                          str(fallback_error)
+                      )
 
-              except Exception as error:
+                      if previous_file is None:
+                          raise SystemExit(
+                              "First scene could not be generated."
+                          )
 
-                  print(
-                      "Fallback prompt failed:"
-                  )
+                      print(
+                          "Reusing "
+                          + previous_file
+                          + " for "
+                          + filename
+                      )
 
-                  print(
-                      str(error)
-                  )
-
-                  return False
-
-
-          # --------------------------------------------------------
-          # GENERATE SCENES
-          # --------------------------------------------------------
-
-          generated = {}
-
-          for index in range(3):
-
-              filename, prompt = SCENES[index]
-
-              fallback_filename, fallback_prompt = (
-                  FALLBACK_PROMPTS[index]
-              )
-
-              success = generate_scene(
-                  filename,
-                  prompt,
-                  fallback_prompt
-              )
-
-              generated[filename] = success
-
-
-          # --------------------------------------------------------
-          # GUARANTEE THREE FILES WHEN POSSIBLE
-          # --------------------------------------------------------
-
-          existing = [
-              name
-              for name, success in generated.items()
-              if success and Path(name).exists()
-          ]
-
-
-          print()
-          print(
-              "=========================================="
-          )
-
-          print(
-              "Generated scenes:"
-          )
-
-          for name in generated:
-
-              print(
-                  name
-                  + ": "
-                  + str(generated[name])
-              )
-
-
-          print(
-              "=========================================="
-          )
-
-
-          # Scene 1 is required.
-          if not Path("scene1.jpg").exists():
-
-              raise SystemExit(
-                  "Scene 1 could not be generated."
-              )
-
-
-          # If Scene 2 failed, reuse Scene 1.
-          if not Path("scene2.jpg").exists():
-
-              print(
-                  "Scene 2 unavailable. Reusing Scene 1."
-              )
-
-              shutil.copyfile(
-                  "scene1.jpg",
-                  "scene2.jpg"
-              )
-
-
-          # If Scene 3 failed, reuse Scene 2.
-          if not Path("scene3.jpg").exists():
-
-              print(
-                  "Scene 3 unavailable. Reusing Scene 2."
-              )
-
-              shutil.copyfile(
-                  "scene2.jpg",
-                  "scene3.jpg"
-              )
-
-
-          # --------------------------------------------------------
-          # SAVE PROMPTS FOR INSPECTION
-          # --------------------------------------------------------
+                      shutil.copyfile(
+                          previous_file,
+                          filename
+                      )
 
           with open(
               "scene_prompts.txt",
@@ -480,77 +320,80 @@ jobs:
               encoding="utf-8"
           ) as file:
 
-              for index, item in enumerate(
+              for number, (_, prompt) in enumerate(
                   SCENES,
                   start=1
               ):
 
                   file.write(
                       "SCENE "
-                      + str(index)
+                      + str(number)
                       + "\n"
                   )
 
                   file.write(
-                      item[1]
+                      prompt
                       + "\n\n"
                   )
 
+          for filename, _ in SCENES:
+
+              if not Path(filename).is_file():
+                  raise SystemExit(
+                      "Missing "
+                      + filename
+                  )
 
           print()
           print(
-              "All scene files are ready."
+              "All three scene images are ready."
           )
-
           PY
 
           python3 generate_scenes.py
 
 
       # ============================================================
-      # 4. CREATE HINDI SCRIPT + REALISTIC TTS
+      # 4. CREATE HINDI VOICE
       # ============================================================
       - name: Create Hindi voice
         shell: bash
         run: |
-
           set -euo pipefail
 
-          cat > script.txt <<'EOF'
-          बच्चा 1: मम्मी, आज मैंने स्कूल में एक राज़ सीखा!
-          बच्चा 2: अच्छा? कैसा राज़?
-          बच्चा 1: होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!
+          cat > child1.txt <<'EOF'
+          मम्मी, आज मैंने स्कूल में एक राज़ सीखा!
           EOF
 
-          echo "Hindi script:"
-          cat script.txt
-          echo ""
+          cat > adult.txt <<'EOF'
+          अच्छा? कैसा राज़?
+          EOF
 
-          # Child-like voice
+          cat > child2.txt <<'EOF'
+          होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!
+          EOF
+
           edge-tts \
             --voice "hi-IN-SwaraNeural" \
             --rate "+8%" \
             --pitch "+15Hz" \
-            --text "मम्मी, आज मैंने स्कूल में एक राज़ सीखा!" \
+            --text "$(cat child1.txt)" \
             --write-media child1.mp3
 
-          # Adult voice
           edge-tts \
             --voice "hi-IN-MadhurNeural" \
             --rate "+3%" \
             --pitch "+0Hz" \
-            --text "अच्छा? कैसा राज़?" \
+            --text "$(cat adult.txt)" \
             --write-media adult.mp3
 
-          # Child-like punchline
           edge-tts \
             --voice "hi-IN-SwaraNeural" \
             --rate "+8%" \
             --pitch "+15Hz" \
-            --text "होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!" \
+            --text "$(cat child2.txt)" \
             --write-media child2.mp3
 
-          # Convert everything to WAV.
           ffmpeg -y \
             -i child1.mp3 \
             -ar 44100 \
@@ -569,19 +412,19 @@ jobs:
             -ac 2 \
             child2.wav
 
-          # Small pauses between dialogue lines.
           ffmpeg -y \
             -f lavfi \
             -i "anullsrc=r=44100:cl=stereo" \
             -t 0.12 \
             pause.wav
 
-          # Build concat list.
-          printf "file '%s'\n" "$PWD/child1.wav" > audio_concat.txt
-          printf "file '%s'\n" "$PWD/pause.wav" >> audio_concat.txt
-          printf "file '%s'\n" "$PWD/adult.wav" >> audio_concat.txt
-          printf "file '%s'\n" "$PWD/pause.wav" >> audio_concat.txt
-          printf "file '%s'\n" "$PWD/child2.wav" >> audio_concat.txt
+          {
+            echo "file '$PWD/child1.wav'"
+            echo "file '$PWD/pause.wav'"
+            echo "file '$PWD/adult.wav'"
+            echo "file '$PWD/pause.wav'"
+            echo "file '$PWD/child2.wav'"
+          } > audio_concat.txt
 
           ffmpeg -y \
             -f concat \
@@ -589,6 +432,14 @@ jobs:
             -i audio_concat.txt \
             -c:a pcm_s16le \
             voice.wav
+
+          test -s voice.wav
+
+          cat > script.txt <<'EOF'
+          बच्चा 1: मम्मी, आज मैंने स्कूल में एक राज़ सीखा!
+          बच्चा 2: अच्छा? कैसा राज़?
+          बच्चा 1: होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!
+          EOF
 
           echo "Hindi voice created."
 
@@ -599,7 +450,6 @@ jobs:
       - name: Create Scene 1 video
         shell: bash
         run: |
-
           set -euo pipefail
 
           ffmpeg -y \
@@ -621,7 +471,6 @@ jobs:
       - name: Create Scene 2 video
         shell: bash
         run: |
-
           set -euo pipefail
 
           ffmpeg -y \
@@ -643,7 +492,6 @@ jobs:
       - name: Create Scene 3 video
         shell: bash
         run: |
-
           set -euo pipefail
 
           ffmpeg -y \
@@ -660,26 +508,26 @@ jobs:
 
 
       # ============================================================
-      # 8. JOIN ALL THREE VIDEO SCENES
+      # 8. JOIN SCENES
       # ============================================================
       - name: Join scenes
         shell: bash
         run: |
-
           set -euo pipefail
 
           ffmpeg -y \
             -i scene1.mp4 \
             -i scene2.mp4 \
             -i scene3.mp4 \
-            -filter_complex \
-            "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]" \
+            -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]" \
             -map "[v]" \
             -c:v libx264 \
             -preset veryfast \
             -crf 23 \
             -pix_fmt yuv420p \
             silent_video.mp4
+
+          test -s silent_video.mp4
 
 
       # ============================================================
@@ -688,7 +536,6 @@ jobs:
       - name: Add Hindi voice
         shell: bash
         run: |
-
           set -euo pipefail
 
           ffmpeg -y \
@@ -696,10 +543,12 @@ jobs:
             -i voice.wav \
             -map 0:v:0 \
             -map 1:a:0 \
+            -af "apad=whole_dur=9" \
+            -t 9 \
             -c:v copy \
             -c:a aac \
             -b:a 128k \
-            -shortest \
+            -movflags +faststart \
             final_toddler_short.mp4
 
           test -s final_toddler_short.mp4
@@ -708,12 +557,11 @@ jobs:
 
 
       # ============================================================
-      # 10. VERIFY OUTPUT
+      # 10. VERIFY VIDEO
       # ============================================================
       - name: Verify final video
         shell: bash
         run: |
-
           set -euo pipefail
 
           echo "=========================================="
@@ -727,7 +575,136 @@ jobs:
             -of default=noprint_wrappers=1 \
             final_toddler_short.mp4
 
-          echo "=========================================="
+          python3 - <<'PY'
+          import subprocess
+          import sys
+
+          def probe(args):
+              command = [
+                  "ffprobe",
+                  "-v",
+                  "error",
+                  *args,
+                  "final_toddler_short.mp4"
+              ]
+
+              result = subprocess.run(
+                  command,
+                  capture_output=True,
+                  text=True,
+                  check=True
+              )
+
+              return result.stdout.strip()
+
+          duration = float(
+              probe([
+                  "-show_entries",
+                  "format=duration",
+                  "-of",
+                  "default=noprint_wrappers=1:nokey=1"
+              ])
+          )
+
+          dimensions = probe([
+              "-show_entries",
+              "stream=width,height",
+              "-of",
+              "csv=s=x:p=0"
+          ])
+
+          print(
+              "Duration:",
+              round(duration, 2),
+              "seconds"
+          )
+
+          print(
+              "Dimensions:",
+              dimensions
+          )
+
+          if abs(duration - 9.0) > 0.15:
+              raise SystemExit(
+                  "ERROR: Final video is not approximately 9 seconds."
+              )
+
+          if dimensions != "1080x1920":
+              raise SystemExit(
+                  "ERROR: Final video is not 1080x1920."
+              )
+
+          print(
+              "FINAL VIDEO VALIDATION PASSED"
+          )
+          PY
+
+
+      # ============================================================
+      # 11. CREATE YOUTUBE METADATA
+      # ============================================================
+      - name: Create YouTube metadata
+        shell: bash
+        run: |
+          set -euo pipefail
 
           python3 - <<'PY'
-    
+          import json
+
+          metadata = {
+              "title": "जब बच्चे ने होमवर्क का राज़ बताया 😂 #shorts",
+
+              "description": (
+                  "एक छोटे बच्चे का मज़ेदार और मासूम जवाब 😂\n\n"
+                  "ऐसे ही funny Hindi Shorts के लिए subscribe करें!\n\n"
+                  "#shorts #funny #comedy #kids #hindi #toddler"
+              ),
+
+              "tags": [
+                  "shorts",
+                  "funny",
+                  "comedy",
+                  "kids",
+                  "toddler",
+                  "hindi",
+                  "hindi comedy",
+                  "funny kids",
+                  "indian toddler"
+              ],
+
+              "language": "Hindi",
+              "format": "YouTube Shorts",
+              "aspect_ratio": "9:16",
+              "duration_seconds": 9,
+              "captions": False,
+              "visual_model": "Cloudflare FLUX.1 Schnell"
+          }
+
+          with open(
+              "youtube_metadata.json",
+              "w",
+              encoding="utf-8"
+          ) as file:
+
+              json.dump(
+                  metadata,
+                  file,
+                  ensure_ascii=False,
+                  indent=2
+              )
+
+          print(
+              "YouTube metadata created."
+          )
+          PY
+
+
+      # ============================================================
+      # 12. UPLOAD FINAL ARTIFACT
+      # ============================================================
+      - name: Upload final test package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toddler-video-test
+     
