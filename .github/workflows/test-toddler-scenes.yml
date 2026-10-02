@@ -12,7 +12,6 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
         run: |
           echo "Generating Scene 1..."
 
@@ -22,55 +21,35 @@ jobs:
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{
-              "prompt": "photorealistic cinematic photograph of a cute fictional young Indian character with a small round face, round cheeks, large expressive brown eyes, short black hair, cheerful innocent smile, wearing a bright yellow T-shirt and blue shorts, standing in a realistic Indian neighborhood street, warm natural daylight, realistic skin texture, professional photography, shallow depth of field"
+              "prompt": "photorealistic cinematic photograph of a fictional 3-year-old Indian boy, small and slightly chubby, round cheeks, big expressive brown eyes, short black hair, happy innocent smile, yellow T-shirt, blue shorts, realistic Indian neighborhood street, natural daylight, professional photography",
+              "steps": 1
             }' \
             -o scene1.json
-
-          echo "Cloudflare response received."
 
           python - <<'PY'
           import json
           import base64
-          import sys
 
           with open("scene1.json", "r") as f:
               data = json.load(f)
 
-          if "errors" in data and data["errors"]:
-              print("CLOUDFLARE ERROR:")
+          if not data.get("success"):
               print(json.dumps(data, indent=2))
-              sys.exit(1)
+              raise SystemExit("Scene 1 generation failed")
 
-          result = data.get("result")
-
-          if not result:
-              print("ERROR: Missing result")
-              print(json.dumps(data, indent=2))
-              sys.exit(1)
-
-          if isinstance(result, dict):
-              image = result.get("image")
-          elif isinstance(result, str):
-              image = result
-          else:
-              image = None
-
-          if not image:
-              print("ERROR: No image found")
-              print(json.dumps(data, indent=2))
-              sys.exit(1)
+          image = data["result"]["image"]
 
           with open("scene1.png", "wb") as f:
               f.write(base64.b64decode(image))
 
-          print("SCENE 1 CREATED")
+          print("Scene 1 created successfully")
           PY
+
 
       - name: Generate Scene 2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
         run: |
           echo "Generating Scene 2..."
 
@@ -80,48 +59,35 @@ jobs:
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{
-              "prompt": "photorealistic cinematic close-up of the same cute fictional young Indian character with a small round face, round cheeks, large expressive brown eyes, short black hair, wearing a bright yellow T-shirt and blue shorts, making a hilarious confused facial expression while looking toward an adult nearby, realistic Indian home entrance, warm natural daylight, realistic skin texture, professional photography, shallow depth of field"
+              "prompt": "photorealistic cinematic close-up of a fictional 3-year-old Indian boy, small and slightly chubby, round cheeks, big expressive brown eyes, short black hair, funny confused expression, yellow T-shirt, blue shorts, standing near an Indian home entrance, natural daylight, professional photography",
+              "steps": 1
             }' \
             -o scene2.json
 
           python - <<'PY'
           import json
           import base64
-          import sys
 
           with open("scene2.json", "r") as f:
               data = json.load(f)
 
-          if "errors" in data and data["errors"]:
-              print("CLOUDFLARE ERROR:")
+          if not data.get("success"):
               print(json.dumps(data, indent=2))
-              sys.exit(1)
+              raise SystemExit("Scene 2 generation failed")
 
-          result = data.get("result")
-
-          if isinstance(result, dict):
-              image = result.get("image")
-          elif isinstance(result, str):
-              image = result
-          else:
-              image = None
-
-          if not image:
-              print("ERROR: No image found")
-              print(json.dumps(data, indent=2))
-              sys.exit(1)
+          image = data["result"]["image"]
 
           with open("scene2.png", "wb") as f:
               f.write(base64.b64decode(image))
 
-          print("SCENE 2 CREATED")
+          print("Scene 2 created successfully")
           PY
+
 
       - name: Generate Scene 3
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
         run: |
           echo "Generating Scene 3..."
 
@@ -131,42 +97,44 @@ jobs:
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{
-              "prompt": "photorealistic cinematic photograph of the same cute fictional young Indian character with a small round face, round cheeks, large expressive brown eyes, short black hair, bright yellow T-shirt and blue shorts, giving an extremely funny innocent smile after saying something clever, playful expression, realistic Indian street background, warm natural daylight, realistic skin texture, professional photography, shallow depth of field"
+              "prompt": "photorealistic cinematic photograph of a fictional 3-year-old Indian boy, small and slightly chubby, round cheeks, big expressive brown eyes, short black hair, laughing happily while holding a small colorful toy, yellow T-shirt, blue shorts, cheerful Indian neighborhood background, natural daylight, professional photography",
+              "steps": 1
             }' \
             -o scene3.json
+
+          echo "Cloudflare response for Scene 3:"
+          cat scene3.json
+          echo ""
 
           python - <<'PY'
           import json
           import base64
-          import sys
 
           with open("scene3.json", "r") as f:
               data = json.load(f)
 
-          if "errors" in data and data["errors"]:
-              print("CLOUDFLARE ERROR:")
+          if not data.get("success"):
               print(json.dumps(data, indent=2))
-              sys.exit(1)
+              raise SystemExit("Scene 3 generation failed")
 
-          result = data.get("result")
-
-          if isinstance(result, dict):
-              image = result.get("image")
-          elif isinstance(result, str):
-              image = result
-          else:
-              image = None
-
-          if not image:
-              print("ERROR: No image found")
-              print(json.dumps(data, indent=2))
-              sys.exit(1)
+          image = data["result"]["image"]
 
           with open("scene3.png", "wb") as f:
               f.write(base64.b64decode(image))
 
-          print("SCENE 3 CREATED")
+          print("Scene 3 created successfully")
           PY
+
+
+      - name: Verify generated images
+        run: |
+          echo "Generated files:"
+          ls -lh scene1.png scene2.png scene3.png
+
+          file scene1.png
+          file scene2.png
+          file scene3.png
+
 
       - name: Upload all scenes
         uses: actions/upload-artifact@v4
