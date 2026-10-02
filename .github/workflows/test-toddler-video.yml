@@ -14,14 +14,7 @@ jobs:
     steps:
 
       # ============================================================
-      # 1. CHECKOUT
-      # ============================================================
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-
-      # ============================================================
-      # 2. INSTALL TOOLS
+      # 1. INSTALL TOOLS
       # ============================================================
       - name: Install tools
         shell: bash
@@ -29,12 +22,10 @@ jobs:
           set -euo pipefail
 
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3-pip
+          sudo apt-get install -y ffmpeg jq python3-pip
 
           python3 -m pip install \
             --break-system-packages \
-            requests \
-            Pillow \
             edge-tts
 
           mkdir -p artifacts
@@ -43,7 +34,7 @@ jobs:
 
 
       # ============================================================
-      # 3. CHECK CLOUDFLARE SECRETS
+      # 2. CHECK CLOUDFLARE SECRETS
       # ============================================================
       - name: Check Cloudflare configuration
         shell: bash
@@ -67,7 +58,7 @@ jobs:
 
 
       # ============================================================
-      # 4. GENERATE TODDLER IMAGES
+      # 3. GENERATE THREE TODDLER SCENES
       # ============================================================
       - name: Generate toddler scenes
         shell: bash
@@ -75,484 +66,225 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-
           set -euo pipefail
 
-          cat > generate_scenes.py <<'PY'
-          import base64
-          import io
-          import json
-          import os
-          import shutil
-          import sys
-
-          import requests
-          from PIL import Image
-
-
-          ACCOUNT_ID = os.environ["CLOUDFLARE_ACCOUNT_ID"]
-          API_TOKEN = os.environ["CLOUDFLARE_API_TOKEN"]
-
-
-          ENDPOINT = (
-              "https://api.cloudflare.com/client/v4/accounts/"
-              + ACCOUNT_ID
-              + "/ai/run/@cf/black-forest-labs/flux-1-schnell"
-          )
-
-
-          # --------------------------------------------------------
-          # CHARACTER
-          # --------------------------------------------------------
-
-          CHARACTER = (
-              "wholesome family friendly fictional Indian toddler boy, "
-              "about three years old, small chubby body, round cheeks, "
-              "large expressive brown eyes, short black hair, "
-              "cute innocent face, bright yellow T-shirt, blue shorts"
-          )
-
-
-          # --------------------------------------------------------
-          # SCENE PROMPTS
-          # --------------------------------------------------------
-
-          SCENES = [
-              (
-                  "scene1.jpg",
-                  CHARACTER
-                  + ", happy innocent smile, standing on a clean "
-                  + "Indian residential street, warm natural daylight, "
-                  + "realistic professional photography, cinematic portrait"
-              ),
+          API_URL="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-1-schnell"
+
+          generate_image() {
+            local prompt="$1"
+            local output="$2"
+            local response="$3"
+            local http_code
+            local encoded
 
-              (
-                  "scene2.jpg",
-                  CHARACTER
-                  + ", funny confused expression, looking toward his "
-                  + "mother near an Indian home entrance, warm daylight, "
-                  + "realistic professional photography, cinematic close-up"
-              ),
+            http_code="$(
+              curl -sS \
+                --retry 3 \
+                --retry-delay 2 \
+                -o "$response" \
+                -w "%{http_code}" \
+                "$API_URL" \
+                -X POST \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                --data "$(
+                  jq -n \
+                    --arg prompt "$prompt" \
+                    --argjson steps 4 \
+                    '{prompt: $prompt, steps: $steps}'
+                )"
+            )"
 
-              (
-                  "scene3.jpg",
-                  CHARACTER
-                  + ", playful happy expression, smiling after saying "
-                  + "something funny, colorful Indian neighborhood, "
-                  + "warm daylight, realistic professional photography, "
-                  + "cinematic portrait"
-              )
-          ]
+            echo "Cloudflare HTTP status: $http_code"
 
+            if [ "$http_code" != "200" ]; then
+              echo "Cloudflare response:"
+              cat "$response"
+              return 1
+            fi
 
-          FALLBACK_PROMPT = (
-              "wholesome family friendly photograph of a fictional "
-              "young Indian child, cute round face, large expressive "
-              "brown eyes, short black hair, colorful casual clothing, "
-              "cheerful smile, sunny neighborhood, natural daylight, "
-              "realistic professional photography"
-          )
+            if [ "$(jq -r '.success // false' "$response")" != "true" ]; then
+              echo "Cloudflare returned success=false:"
+              cat "$response"
+              return 1
+            fi
 
+            encoded="$(jq -r '.result.image // empty' "$response")"
+
+            if [ -z "$encoded" ]; then
+              echo "Cloudflare response did not contain result.image:"
+              cat "$response"
+              return 1
+            fi
 
-          # --------------------------------------------------------
-          # CLOUDFLARE REQUEST
-          # --------------------------------------------------------
+            printf '%s' "$encoded" | base64 --decode > "$output"
 
-          def request_image(prompt):
+            test -s "$output"
 
-              payload = {
-                  "prompt": prompt,
-                  "steps": 4
-              }
+            # Let FFmpeg verify the returned image bytes.
+            ffprobe \
+              -v error \
+              -select_streams v:0 \
+              -show_entries stream=codec_name \
+              -of default=noprint_wrappers=1:nokey=1 \
+              "$output" >/dev/null
 
-              response = requests.post(
-                  ENDPOINT,
-                  headers={
-                      "Authorization": "Bearer " + API_TOKEN,
-                      "Content-Type": "application/json"
-                  },
-                  json=payload,
-                  timeout=180
-              )
+            echo "Created $output"
+          }
+
+
+          # ----------------------------------------------------------
+          # Same fictional character description
+          # ----------------------------------------------------------
 
-
-              try:
-                  data = response.json()
-              except ValueError:
-
-                  raise RuntimeError(
-                      "Cloudflare returned invalid JSON. "
-                      + "HTTP status: "
-                      + str(response.status_code)
-                  )
-
-
-              if not response.ok:
-
-                  raise RuntimeError(
-                      "Cloudflare HTTP "
-                      + str(response.status_code)
-                      + ": "
-                      + json.dumps(
-                          data,
-                          ensure_ascii=False
-                      )
-                  )
-
-
-              if not data.get("success", False):
-
-                  raise RuntimeError(
-                      "Cloudflare generation failed: "
-                      + json.dumps(
-                          data.get("errors", data),
-                          ensure_ascii=False
-                      )
-                  )
-
-
-              result = data.get("result")
-
-              if not isinstance(result, dict):
-
-                  raise RuntimeError(
-                      "Cloudflare response has no result object."
-                  )
-
-
-              encoded = result.get("image")
-
-              if not isinstance(encoded, str) or not encoded:
-
-                  raise RuntimeError(
-                      "Cloudflare response contains no image."
-                  )
-
-
-              try:
-
-                  return base64.b64decode(
-                      encoded,
-                      validate=True
-                  )
-
-              except Exception as error:
-
-                  raise RuntimeError(
-                      "Invalid Base64 image: "
-                      + str(error)
-                  )
-
-
-          # --------------------------------------------------------
-          # NORMALIZE CLOUDflare IMAGE
-          #
-          # FLUX response is documented as JPEG.
-          # We decode it and save a known-good JPEG.
-          # --------------------------------------------------------
-
-          def save_jpeg(filename, image_bytes):
-
-              try:
-
-                  image = Image.open(
-                      io.BytesIO(image_bytes)
-                  )
-
-                  image.load()
-
-                  image = image.convert("RGB")
-
-              except Exception as error:
-
-                  raise RuntimeError(
-                      "Cloudflare returned bytes that could not "
-                      + "be decoded as an image: "
-                      + str(error)
-                  )
-
-
-              image.save(
-                  filename,
-                  format="JPEG",
-                  quality=95,
-                  optimize=True
-              )
-
-
-              if not os.path.isfile(filename):
-
-                  raise RuntimeError(
-                      "Image file was not created: "
-                      + filename
-                  )
-
-
-              if os.path.getsize(filename) < 1000:
-
-                  raise RuntimeError(
-                      "Image file is unexpectedly small: "
-                      + filename
-                  )
-
-
-          # --------------------------------------------------------
-          # GENERATE
-          # --------------------------------------------------------
-
-          previous_scene = None
-
-
-          for index, (filename, prompt) in enumerate(
-              SCENES,
-              start=1
-          ):
-
-              print()
-              print("==========================================")
-              print("GENERATING SCENE " + str(index))
-              print("==========================================")
-
-              # ----------------------------------------------------
-              # PRIMARY
-              # ----------------------------------------------------
-
-              try:
-
-                  raw_image = request_image(
-                      prompt
-                  )
-
-                  save_jpeg(
-                      filename,
-                      raw_image
-                  )
-
-                  previous_scene = filename
-
-                  print(
-                      "Scene "
-                      + str(index)
-                      + " created successfully."
-                  )
-
-                  continue
-
-              except Exception as error:
-
-                  print(
-                      "Primary prompt failed:"
-                  )
-
-                  print(
-                      str(error)
-                  )
-
-
-              # ----------------------------------------------------
-              # SAFE FALLBACK
-              # ----------------------------------------------------
-
-              try:
-
-                  print(
-                      "Trying safe fallback..."
-                  )
-
-                  raw_image = request_image(
-                      FALLBACK_PROMPT
-                  )
-
-                  save_jpeg(
-                      filename,
-                      raw_image
-                  )
-
-                  previous_scene = filename
-
-                  print(
-                      "Fallback scene "
-                      + str(index)
-                      + " created successfully."
-                  )
-
-                  continue
-
-              except Exception as error:
-
-                  print(
-                      "Fallback failed:"
-                  )
-
-                  print(
-                      str(error)
-                  )
-
-
-              # ----------------------------------------------------
-              # LAST-RESORT REUSE
-              # ----------------------------------------------------
-
-              if previous_scene is None:
-
-                  sys.exit(
-                      "Unable to generate the first scene."
-                  )
-
-
-              print(
-                  "Reusing previous valid scene:"
-                  + " "
-                  + previous_scene
-                  + " -> "
-                  + filename
-              )
-
-
-              shutil.copyfile(
-                  previous_scene,
-                  filename
-              )
-
-
-          # --------------------------------------------------------
-          # VERIFY ALL IMAGES
-          # --------------------------------------------------------
-
-          for filename, _ in SCENES:
-
-              if not os.path.isfile(filename):
-
-                  sys.exit(
-                      "Missing image: "
-                      + filename
-                  )
-
-
-              try:
-
-                  image = Image.open(filename)
-
-                  image.verify()
-
-              except Exception as error:
-
-                  sys.exit(
-                      "Invalid final image "
-                      + filename
-                      + ": "
-                      + str(error)
-                  )
-
-
-          # --------------------------------------------------------
-          # SAVE PROMPTS
-          # --------------------------------------------------------
-
-          with open(
-              "scene_prompts.txt",
-              "w",
-              encoding="utf-8"
-          ) as file:
-
-              for index, (_, prompt) in enumerate(
-                  SCENES,
-                  start=1
-              ):
-
-                  file.write(
-                      "SCENE "
-                      + str(index)
-                      + "\n"
-                  )
-
-                  file.write(
-                      prompt
-                      + "\n\n"
-                  )
-
-
-          print()
-          print("ALL THREE SCENES VERIFIED SUCCESSFULLY.")
-
-          PY
-
-
-          python3 generate_scenes.py
+          character="wholesome family-friendly fictional Indian toddler boy, about three years old, small chubby body, round cheeks, large expressive brown eyes, short black hair, bright yellow T-shirt, blue shorts"
+
+
+          scene1="cute happy smile, standing on a sunny Indian residential street, warm natural daylight, realistic professional photography, cinematic portrait, vertical composition"
+
+          scene2="funny confused expression, looking toward his mother near an Indian home entrance, warm natural daylight, realistic professional photography, cinematic close-up, vertical composition"
+
+          scene3="playful happy expression after saying something funny, colorful Indian neighborhood, warm natural daylight, realistic professional photography, cinematic portrait, vertical composition"
+
+
+          fallback="wholesome family-friendly photograph of a fictional young Indian child smiling outdoors, colorful casual clothing, sunny Indian neighborhood, natural daylight, realistic professional photography, vertical composition"
+
+
+          # ----------------------------------------------------------
+          # Scene 1
+          # ----------------------------------------------------------
+
+          echo "Generating Scene 1..."
+
+          if ! generate_image \
+            "$character, $scene1" \
+            "scene1.jpg" \
+            "scene1.json"
+          then
+            echo "Scene 1 primary prompt failed."
+            echo "Trying fallback prompt..."
+
+            generate_image \
+              "$fallback" \
+              "scene1.jpg" \
+              "scene1_fallback.json"
+          fi
+
+
+          # ----------------------------------------------------------
+          # Scene 2
+          # ----------------------------------------------------------
+
+          echo "Generating Scene 2..."
+
+          if ! generate_image \
+            "$character, $scene2" \
+            "scene2.jpg" \
+            "scene2.json"
+          then
+            echo "Scene 2 primary prompt failed."
+            echo "Trying fallback prompt..."
+
+            generate_image \
+              "$fallback" \
+              "scene2.jpg" \
+              "scene2_fallback.json"
+          fi
+
+
+          # ----------------------------------------------------------
+          # Scene 3
+          # ----------------------------------------------------------
+
+          echo "Generating Scene 3..."
+
+          if ! generate_image \
+            "$character, $scene3" \
+            "scene3.jpg" \
+            "scene3.json"
+          then
+            echo "Scene 3 primary prompt failed."
+            echo "Trying fallback prompt..."
+
+            generate_image \
+              "$fallback" \
+              "scene3.jpg" \
+              "scene3_fallback.json"
+          fi
+
+
+          # ----------------------------------------------------------
+          # Verify images exist
+          # ----------------------------------------------------------
+
+          for file in scene1.jpg scene2.jpg scene3.jpg
+          do
+            if [ ! -s "$file" ]; then
+              echo "::error::Missing image: $file"
+              exit 1
+            fi
+          done
+
+
+          # Remove API response JSON files from the final package.
+          rm -f \
+            scene1.json \
+            scene2.json \
+            scene3.json \
+            scene1_fallback.json \
+            scene2_fallback.json \
+            scene3_fallback.json
+
+
+          echo "All three toddler scenes generated successfully."
 
 
       # ============================================================
-      # 5. CREATE HINDI VOICE
+      # 4. CREATE HINDI VOICE
       # ============================================================
       - name: Create Hindi voice
         shell: bash
         run: |
-
           set -euo pipefail
 
-          cat > create_voice.py <<'PY'
-          import asyncio
+          printf '%s\n' \
+            'मम्मी, आज मैंने स्कूल में एक राज़ सीखा!' \
+            > child1.txt
 
-          import edge_tts
+          printf '%s\n' \
+            'अच्छा? कैसा राज़?' \
+            > adult.txt
 
-
-          async def make_voice(
-              text,
-              voice,
-              rate,
-              pitch,
-              output
-          ):
-
-              communicate = edge_tts.Communicate(
-                  text,
-                  voice,
-                  rate=rate,
-                  pitch=pitch
-              )
-
-              await communicate.save(
-                  output
-              )
+          printf '%s\n' \
+            'होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!' \
+            > child2.txt
 
 
-          async def main():
-
-              await make_voice(
-                  "मम्मी, आज मैंने स्कूल में एक राज़ सीखा!",
-                  "hi-IN-SwaraNeural",
-                  "+8%",
-                  "+15Hz",
-                  "child1.mp3"
-              )
+          # Child line 1
+          edge-tts \
+            --voice "hi-IN-SwaraNeural" \
+            --rate="+8%" \
+            --pitch="+15Hz" \
+            --file child1.txt \
+            --write-media child1.mp3
 
 
-              await make_voice(
-                  "अच्छा? कैसा राज़?",
-                  "hi-IN-MadhurNeural",
-                  "+3%",
-                  "+0Hz",
-                  "adult.mp3"
-              )
+          # Mother line
+          edge-tts \
+            --voice "hi-IN-MadhurNeural" \
+            --rate="+3%" \
+            --pitch="+0Hz" \
+            --file adult.txt \
+            --write-media adult.mp3
 
 
-              await make_voice(
-                  "होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!",
-                  "hi-IN-SwaraNeural",
-                  "+8%",
-                  "+15Hz",
-                  "child2.mp3"
-              )
-
-
-          asyncio.run(
-              main()
-          )
-
-          PY
-
-
-          python3 create_voice.py
+          # Child punchline
+          edge-tts \
+            --voice "hi-IN-SwaraNeural" \
+            --rate="+8%" \
+            --pitch="+15Hz" \
+            --file child2.txt \
+            --write-media child2.mp3
 
 
           test -s child1.mp3
@@ -560,20 +292,18 @@ jobs:
           test -s child2.mp3
 
 
-          # Convert audio to WAV
+          # Convert audio
           ffmpeg -y \
             -i child1.mp3 \
             -ar 44100 \
             -ac 2 \
             child1.wav
 
-
           ffmpeg -y \
             -i adult.mp3 \
             -ar 44100 \
             -ac 2 \
             adult.wav
-
 
           ffmpeg -y \
             -i child2.mp3 \
@@ -582,7 +312,7 @@ jobs:
             child2.wav
 
 
-          # Create pauses
+          # Small dialogue pause
           ffmpeg -y \
             -f lavfi \
             -i "anullsrc=r=44100:cl=stereo" \
@@ -590,17 +320,15 @@ jobs:
             pause.wav
 
 
-          # Build audio sequence
-          {
-            echo "file '$PWD/child1.wav'"
-            echo "file '$PWD/pause.wav'"
-            echo "file '$PWD/adult.wav'"
-            echo "file '$PWD/pause.wav'"
-            echo "file '$PWD/child2.wav'"
-          } > audio_concat.txt
+          # Build audio order
+          printf "file '%s/child1.wav'\n" "$PWD" > audio_concat.txt
+          printf "file '%s/pause.wav'\n" "$PWD" >> audio_concat.txt
+          printf "file '%s/adult.wav'\n" "$PWD" >> audio_concat.txt
+          printf "file '%s/pause.wav'\n" "$PWD" >> audio_concat.txt
+          printf "file '%s/child2.wav'\n" "$PWD" >> audio_concat.txt
 
 
-          # Combine
+          # Combine voice
           ffmpeg -y \
             -f concat \
             -safe 0 \
@@ -612,23 +340,22 @@ jobs:
           test -s voice.wav
 
 
-          cat > script.txt <<'EOF'
-          बच्चा: मम्मी, आज मैंने स्कूल में एक राज़ सीखा!
-          मम्मी: अच्छा? कैसा राज़?
-          बच्चा: होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!
-          EOF
+          printf '%s\n' \
+            'मम्मी, आज मैंने स्कूल में एक राज़ सीखा!' \
+            'अच्छा? कैसा राज़?' \
+            'होमवर्क छुपा दो, तो टीचर खुद ढूंढने आ जाती हैं!' \
+            > script.txt
 
 
           echo "Hindi voice created successfully."
 
 
       # ============================================================
-      # 6. CREATE SCENE 1 VIDEO
+      # 5. CREATE SCENE VIDEOS
       # ============================================================
       - name: Create Scene 1 video
         shell: bash
         run: |
-
           set -euo pipefail
 
           ffmpeg -y \
@@ -644,17 +371,12 @@ jobs:
             -movflags +faststart \
             scene1.mp4
 
-
           test -s scene1.mp4
 
 
-      # ============================================================
-      # 7. CREATE SCENE 2 VIDEO
-      # ============================================================
       - name: Create Scene 2 video
         shell: bash
         run: |
-
           set -euo pipefail
 
           ffmpeg -y \
@@ -670,17 +392,12 @@ jobs:
             -movflags +faststart \
             scene2.mp4
 
-
           test -s scene2.mp4
 
 
-      # ============================================================
-      # 8. CREATE SCENE 3 VIDEO
-      # ============================================================
       - name: Create Scene 3 video
         shell: bash
         run: |
-
           set -euo pipefail
 
           ffmpeg -y \
@@ -696,43 +413,39 @@ jobs:
             -movflags +faststart \
             scene3.mp4
 
-
           test -s scene3.mp4
 
 
       # ============================================================
-      # 9. JOIN SCENES
+      # 6. JOIN SCENES
       # ============================================================
       - name: Join scenes
         shell: bash
         run: |
-
           set -euo pipefail
 
           ffmpeg -y \
             -i scene1.mp4 \
             -i scene2.mp4 \
             -i scene3.mp4 \
-            -filter_complex \
-              "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]" \
+            -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]" \
             -map "[v]" \
             -c:v libx264 \
             -preset veryfast \
             -crf 23 \
             -pix_fmt yuv420p \
+            -movflags +faststart \
             silent_video.mp4
-
 
           test -s silent_video.mp4
 
 
       # ============================================================
-      # 10. ADD HINDI VOICE
+      # 7. ADD HINDI VOICE
       # ============================================================
       - name: Add Hindi voice
         shell: bash
         run: |
-
           set -euo pipefail
 
           ffmpeg -y \
@@ -748,27 +461,193 @@ jobs:
             -movflags +faststart \
             final_toddler_short.mp4
 
-
           test -s final_toddler_short.mp4
-
 
           echo "Final video created successfully."
 
 
       # ============================================================
-      # 11. VERIFY FINAL VIDEO
+      # 8. VERIFY FINAL VIDEO
       # ============================================================
       - name: Verify final video
         shell: bash
         run: |
-
           set -euo pipefail
 
-          python3 - <<'PY'
-          import json
-          import subprocess
-          import sys
+          test -s final_toddler_short.mp4
 
 
-          result = subprocess.run(
- 
+          width="$(
+            ffprobe \
+              -v error \
+              -select_streams v:0 \
+              -show_entries stream=width \
+              -of csv=p=0 \
+              final_toddler_short.mp4
+          )"
+
+          height="$(
+            ffprobe \
+              -v error \
+              -select_streams v:0 \
+              -show_entries stream=height \
+              -of csv=p=0 \
+              final_toddler_short.mp4
+          )"
+
+          video_codec="$(
+            ffprobe \
+              -v error \
+              -select_streams v:0 \
+              -show_entries stream=codec_name \
+              -of csv=p=0 \
+              final_toddler_short.mp4
+          )"
+
+          audio_codec="$(
+            ffprobe \
+              -v error \
+              -select_streams a:0 \
+              -show_entries stream=codec_name \
+              -of csv=p=0 \
+              final_toddler_short.mp4
+          )"
+
+          duration="$(
+            ffprobe \
+              -v error \
+              -show_entries format=duration \
+              -of csv=p=0 \
+              final_toddler_short.mp4
+          )"
+
+
+          echo "=========================================="
+          echo "FINAL VIDEO CHECK"
+          echo "=========================================="
+          echo "Resolution: ${width}x${height}"
+          echo "Video codec: ${video_codec}"
+          echo "Audio codec: ${audio_codec}"
+          echo "Duration: ${duration} seconds"
+          echo "=========================================="
+
+
+          if [ "$width" != "1080" ]; then
+            echo "::error::Wrong video width: $width"
+            exit 1
+          fi
+
+
+          if [ "$height" != "1920" ]; then
+            echo "::error::Wrong video height: $height"
+            exit 1
+          fi
+
+
+          if [ "$video_codec" != "h264" ]; then
+            echo "::error::Wrong video codec: $video_codec"
+            exit 1
+          fi
+
+
+          if [ "$audio_codec" != "aac" ]; then
+            echo "::error::Wrong audio codec: $audio_codec"
+            exit 1
+          fi
+
+
+          awk -v d="$duration" '
+            BEGIN {
+              if (d >= 8.8 && d <= 9.2) {
+                exit 0
+              }
+
+              exit 1
+            }
+          '
+
+
+          echo "VIDEO VALIDATION PASSED."
+
+
+      # ============================================================
+      # 9. CREATE YOUTUBE METADATA
+      # ============================================================
+      - name: Create YouTube metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          printf '%s\n' \
+            '{' \
+            '  "title": "जब बच्चे ने होमवर्क का राज़ बताया 😂",' \
+            '  "description": "एक छोटे बच्चे का मासूम लेकिन मज़ेदार जवाब 😂\n\n#shorts #funny #comedy #hindi #kids",' \
+            '  "language": "Hindi",' \
+            '  "format": "YouTube Shorts",' \
+            '  "aspect_ratio": "9:16",' \
+            '  "duration_seconds": 9,' \
+            '  "captions": false,' \
+            '  "visual_style": "photorealistic cinematic",' \
+            '  "image_model": "Cloudflare FLUX.1 Schnell"' \
+            '}' \
+            > youtube_metadata.json
+
+
+          jq empty youtube_metadata.json
+
+
+          echo "YouTube metadata created and validated."
+
+
+      # ============================================================
+      # 10. PREPARE ARTIFACT
+      # ============================================================
+      - name: Prepare final package
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf artifacts
+          mkdir -p artifacts
+
+
+          files=(
+            final_toddler_short.mp4
+            scene1.jpg
+            scene2.jpg
+            scene3.jpg
+            script.txt
+            voice.wav
+            youtube_metadata.json
+          )
+
+
+          for file in "${files[@]}"
+          do
+            if [ -s "$file" ]; then
+              cp "$file" artifacts/
+              echo "Added: $file"
+            else
+              echo "Not available: $file"
+            fi
+          done
+
+
+          echo ""
+          echo "Artifact contents:"
+          ls -lh artifacts || true
+
+
+      # ============================================================
+      # 11. UPLOAD ARTIFACT
+      # ============================================================
+      - name: Upload final package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toddler-video-test
+          path: artifacts/
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 7
