@@ -9,35 +9,22 @@ jobs:
 
     steps:
 
-      # ============================================================
-      # 1. CHECKOUT
-      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ============================================================
-      # 2. PYTHON
-      # ============================================================
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # ============================================================
-      # 3. FFMPEG + HINDI FONT
-      # ============================================================
       - name: Install FFmpeg and fonts
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg fonts-noto-core
 
-      # ============================================================
-      # 4. PYTHON PACKAGES
-      # ============================================================
       - name: Install Python packages
         run: |
           python -m pip install --upgrade pip
-
           pip install \
             requests \
             pillow \
@@ -48,9 +35,6 @@ jobs:
             google-auth-oauthlib \
             google-auth-httplib2
 
-      # ============================================================
-      # 5. CREATE DIRECTORIES
-      # ============================================================
       - name: Create working directories
         run: |
           rm -rf scenes audio segments output
@@ -59,9 +43,9 @@ jobs:
           mkdir -p segments
           mkdir -p output
 
-      # ============================================================
-      # 6. GENERATE STORY + SCRIPT + IMAGE PROMPTS
-      # ============================================================
+      # ==========================================================
+      # GENERATE STORY
+      # ==========================================================
       - name: Generate AI story
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -71,7 +55,6 @@ jobs:
           import os
           import json
           import random
-          import re
           import requests
 
           TOKEN = os.environ["CLOUDFLARE_API_TOKEN"]
@@ -89,52 +72,49 @@ jobs:
               "Content-Type": "application/json",
           }
 
-          THEMES = [
+          themes = [
               "एक छोटे खरगोश और एक खोए हुए पक्षी की भावुक दोस्ती",
               "एक छोटा खरगोश जो तूफान में अपने दोस्त को बचाने की कोशिश करता है",
-              "एक गरीब छोटा खरगोश जिसे जंगल में एक रहस्यमयी चिट्ठी मिलती है",
+              "एक छोटा खरगोश जिसे जंगल में एक रहस्यमयी चिट्ठी मिलती है",
               "एक खरगोश जो अपने दोस्त के लिए आखिरी मौका मिलने पर हिम्मत दिखाता है",
               "एक छोटा खरगोश जो जंगल में एक घायल जानवर की मदद करता है",
               "एक खरगोश जिसे लगता है कि उसका दोस्त उसे छोड़कर चला गया है, लेकिन अंत में सच्चाई सामने आती है",
-              "एक छोटा खरगोश जो जंगल में किसी अनजान की मदद करता है और बदले में अप्रत्याशित मदद पाता है",
+              "एक छोटा खरगोश जो किसी अनजान की मदद करता है और बदले में अप्रत्याशित मदद पाता है",
               "एक खरगोश जो अपने डर के बावजूद अपने दोस्त को बचाने के लिए अंधेरे जंगल में जाता है",
           ]
 
-          theme = random.choice(THEMES)
+          theme = random.choice(themes)
 
           system_prompt = """
           तुम Hindi YouTube Shorts के लिए professional viral-story writer हो।
 
-          तुम्हारा काम एक ORIGINAL fictional short story बनाना है।
+          एक ORIGINAL fictional YouTube Short बनाओ।
 
           कहानी:
           - लगभग 25 से 40 सेकंड की हो
-          - शुरुआत पहले ही वाक्य में strong hook से हो
-          - boring introduction नहीं होना चाहिए
-          - हर scene में कहानी आगे बढ़नी चाहिए
-          - एक clear problem हो
-          - tension बढ़नी चाहिए
-          - climax होना चाहिए
-          - satisfying emotional ending होना चाहिए
+          - पहले ही वाक्य में strong hook हो
+          - शुरुआत boring introduction से नहीं हो
+          - clear problem हो
+          - tension बढ़े
+          - climax हो
+          - emotional satisfying ending हो
           - आखिरी scene में natural short CTA हो
-          - बच्चों के लिए डरावनी, खतरनाक या graphic violence नहीं
-          - कोई real person नहीं
-          - कोई copyrighted character नहीं
-          - कोई brand/logo नहीं
+          - graphic violence नहीं
+          - real people नहीं
+          - copyrighted characters नहीं
+          - brands/logos नहीं
 
           भाषा:
           - सरल और natural Hindi
           - narration बोलने में आसान हो
-          - बहुत कठिन शब्द नहीं
-          - English केवल तभी जब natural लगे
+          - छोटे वाक्य इस्तेमाल करो
 
-          Visual consistency:
-          मुख्य character हमेशा:
+          मुख्य character:
           "एक छोटा प्यारा सफेद खरगोश, नीला छोटा scarf पहने हुए"
 
-          हर scene में इसी character का appearance consistent रहना चाहिए।
+          Character को सभी scenes में consistent रखो।
 
-          बिल्कुल इसी JSON structure में जवाब दो:
+          EXACT JSON structure:
 
           {
             "title": "short Hindi title",
@@ -145,56 +125,55 @@ jobs:
                 "scene": 1,
                 "role": "HOOK",
                 "narration": "Hindi narration",
-                "visual_prompt": "English image generation prompt"
+                "visual_prompt": "English visual prompt"
               },
               {
                 "scene": 2,
                 "role": "SETUP",
                 "narration": "Hindi narration",
-                "visual_prompt": "English image generation prompt"
+                "visual_prompt": "English visual prompt"
               },
               {
                 "scene": 3,
                 "role": "PROBLEM",
                 "narration": "Hindi narration",
-                "visual_prompt": "English image generation prompt"
+                "visual_prompt": "English visual prompt"
               },
               {
                 "scene": 4,
                 "role": "TENSION",
                 "narration": "Hindi narration",
-                "visual_prompt": "English image generation prompt"
+                "visual_prompt": "English visual prompt"
               },
               {
                 "scene": 5,
                 "role": "CLIMAX",
                 "narration": "Hindi narration",
-                "visual_prompt": "English image generation prompt"
+                "visual_prompt": "English visual prompt"
               },
               {
                 "scene": 6,
                 "role": "ENDING_CTA",
-                "narration": "Hindi narration ending with a natural short CTA",
-                "visual_prompt": "English image generation prompt"
+                "narration": "Hindi narration with a natural short CTA",
+                "visual_prompt": "English visual prompt"
               }
             ]
           }
 
-          Important:
+          Rules:
           - केवल JSON दो
-          - Markdown code fence मत लगाना
-          - scene count exactly 6 होना चाहिए
-          - narration में scene labels मत लिखना
-          - visual_prompt English में होना चाहिए
+          - Markdown code fences मत लगाओ
+          - exactly 6 scenes
+          - visual_prompt English में
           - visual_prompt में text, letters, subtitles, watermark या logo नहीं
           """
 
           user_prompt = f"""
-          आज की कहानी का theme:
+          आज का story theme:
 
           {theme}
 
-          इस theme पर ऊपर दिए structure के अनुसार एक engaging YouTube Short बनाओ।
+          इस theme पर एक engaging Hindi YouTube Short बनाओ।
           """
 
           payload = {
@@ -228,7 +207,7 @@ jobs:
           if response.status_code != 200:
               print(response.text[:5000])
               raise RuntimeError(
-                  "Story generation request failed."
+                  "Cloudflare story generation failed."
               )
 
           data = response.json()
@@ -236,50 +215,87 @@ jobs:
           if not data.get("success"):
               print(data)
               raise RuntimeError(
-                  "Cloudflare story generation returned success=false."
+                  "Cloudflare returned success=false."
               )
 
-          result = data.get("result", {})
+          result = data.get("result")
 
-          raw_text = result.get("response", "")
-
-          if not raw_text:
+          if result is None:
               print(data)
               raise RuntimeError(
-                  "No text response returned by Cloudflare."
+                  "Cloudflare returned no result."
               )
 
-          print("Raw AI response:")
-          print(raw_text)
+          # ======================================================
+          # IMPORTANT FIX:
+          # Cloudflare may return either:
+          #
+          # 1. result = {"response": "..."}
+          # 2. result = {...structured JSON...}
+          #
+          # Handle both safely.
+          # ======================================================
 
-          # --------------------------------------------------------
-          # Extract JSON even if the model accidentally adds text.
-          # --------------------------------------------------------
-          match = re.search(
-              r"\{.*\}",
-              raw_text,
-              re.DOTALL
-          )
+          if isinstance(result, dict):
 
-          if not match:
+              if "response" in result:
+                  raw = result["response"]
+
+                  if isinstance(raw, dict):
+                      story = raw
+
+                  elif isinstance(raw, str):
+                      try:
+                          story = json.loads(raw)
+                      except json.JSONDecodeError as exc:
+                          print(raw)
+                          raise RuntimeError(
+                              "Cloudflare returned invalid JSON text."
+                          ) from exc
+
+                  else:
+                      raise RuntimeError(
+                          "Unexpected response type."
+                      )
+
+              elif all(
+                  key in result
+                  for key in [
+                      "title",
+                      "description",
+                      "tags",
+                      "scenes"
+                  ]
+              ):
+                  # Your screenshot showed this format.
+                  story = result
+
+              else:
+                  print("Unexpected result:")
+                  print(result)
+                  raise RuntimeError(
+                      "Could not identify story data."
+                  )
+
+          elif isinstance(result, str):
+
+              try:
+                  story = json.loads(result)
+              except json.JSONDecodeError as exc:
+                  print(result)
+                  raise RuntimeError(
+                      "Cloudflare returned invalid JSON text."
+                  ) from exc
+
+          else:
               raise RuntimeError(
-                  "Could not find JSON in AI response."
+                  f"Unexpected result type: {type(result)}"
               )
 
-          json_text = match.group(0)
+          # ======================================================
+          # VALIDATE STORY
+          # ======================================================
 
-          try:
-              story = json.loads(json_text)
-          except json.JSONDecodeError as exc:
-              print("Invalid JSON:")
-              print(json_text)
-              raise RuntimeError(
-                  "AI returned invalid JSON."
-              ) from exc
-
-          # --------------------------------------------------------
-          # Validate structure.
-          # --------------------------------------------------------
           required_top = [
               "title",
               "description",
@@ -297,12 +313,12 @@ jobs:
 
           if not isinstance(scenes, list):
               raise RuntimeError(
-                  "scenes must be a list."
+                  "scenes is not a list."
               )
 
           if len(scenes) != 6:
               raise RuntimeError(
-                  f"Expected exactly 6 scenes, got {len(scenes)}."
+                  f"Expected 6 scenes, got {len(scenes)}."
               )
 
           required_scene_fields = [
@@ -326,55 +342,62 @@ jobs:
               for key in required_scene_fields:
                   if key not in scene:
                       raise RuntimeError(
-                          f"Scene {index + 1} is missing {key}."
+                          f"Scene {index + 1} missing {key}."
                       )
 
-              if not str(scene["narration"]).strip():
+              if not str(
+                  scene["narration"]
+              ).strip():
                   raise RuntimeError(
                       f"Scene {index + 1} has empty narration."
                   )
 
-              if not str(scene["visual_prompt"]).strip():
+              if not str(
+                  scene["visual_prompt"]
+              ).strip():
                   raise RuntimeError(
                       f"Scene {index + 1} has empty visual prompt."
                   )
 
-              role = str(scene["role"]).strip()
+              # Force correct scene numbering.
+              scene["scene"] = index + 1
 
-              if role != expected_roles[index]:
-                  print(
-                      f"Warning: scene {index + 1} role was "
-                      f"{role}, expected {expected_roles[index]}"
-                  )
+              # Force expected role.
+              scene["role"] = expected_roles[index]
 
-          # --------------------------------------------------------
-          # Add mandatory visual consistency instruction.
-          # --------------------------------------------------------
+          # ======================================================
+          # CONSISTENT CHARACTER
+          # ======================================================
+
           character = (
               "same main character: a small cute white rabbit "
-              "wearing a small blue scarf, consistent character "
-              "design, same face, same proportions"
+              "wearing a small blue scarf, consistent face, "
+              "consistent body proportions"
           )
 
-          global_visual_rules = (
+          visual_rules = (
               ", cinematic 3D animated movie style, "
               "high detail, expressive characters, "
               "beautiful lighting, vertical composition, "
-              "no text, no letters, no subtitles, no watermark, "
-              "no logo, no brand"
+              "no text, no letters, no subtitles, "
+              "no watermark, no logo, no brand"
           )
 
           for scene in scenes:
+
               scene["visual_prompt"] = (
                   character
                   + ", "
-                  + str(scene["visual_prompt"]).strip()
-                  + global_visual_rules
+                  + str(
+                      scene["visual_prompt"]
+                  ).strip()
+                  + visual_rules
               )
 
-          # --------------------------------------------------------
-          # Save story.
-          # --------------------------------------------------------
+          # ======================================================
+          # SAVE STORY
+          # ======================================================
+
           with open(
               "story.json",
               "w",
@@ -387,7 +410,6 @@ jobs:
                   indent=2
               )
 
-          # Save simple text version for debugging/artifact.
           with open(
               "story.txt",
               "w",
@@ -395,27 +417,33 @@ jobs:
           ) as f:
 
               f.write(
-                  f"TITLE:\n{story['title']}\n\n"
+                  "TITLE:\n"
+                  + str(story["title"])
+                  + "\n\n"
               )
 
               f.write(
-                  f"DESCRIPTION:\n{story['description']}\n\n"
+                  "DESCRIPTION:\n"
+                  + str(story["description"])
+                  + "\n\n"
               )
 
               for scene in scenes:
+
                   f.write(
                       f"SCENE {scene['scene']} "
                       f"({scene['role']})\n"
                   )
 
                   f.write(
-                      f"{scene['narration']}\n\n"
+                      str(scene["narration"])
+                      + "\n\n"
                   )
 
           print("")
-          print("==========================================")
-          print("AI STORY GENERATED")
-          print("==========================================")
+          print("========================================")
+          print("STORY GENERATED SUCCESSFULLY")
+          print("========================================")
           print("TITLE:", story["title"])
 
           for scene in scenes:
@@ -425,14 +453,14 @@ jobs:
                   f"{scene['narration']}"
               )
 
-          print("==========================================")
+          print("========================================")
           PY
 
           python generate_story.py
 
-      # ============================================================
-      # 7. GENERATE SIX AI IMAGES
-      # ============================================================
+      # ==========================================================
+      # GENERATE 6 IMAGES
+      # ==========================================================
       - name: Generate AI scenes
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -443,6 +471,7 @@ jobs:
           import json
           import base64
           import requests
+
           from io import BytesIO
           from PIL import Image
 
@@ -476,20 +505,17 @@ jobs:
                   scene["visual_prompt"].split()
               )
 
-              print("")
               print(
-                  f"Generating image for scene {number}..."
+                  f"Generating image {number}/6..."
               )
-
-              payload = {
-                  "prompt": prompt,
-                  "steps": 4
-              }
 
               response = requests.post(
                   URL,
                   headers=HEADERS,
-                  json=payload,
+                  json={
+                      "prompt": prompt,
+                      "steps": 4
+                  },
                   timeout=180
               )
 
@@ -512,61 +538,46 @@ jobs:
                       f"Cloudflare failed for scene {number}."
                   )
 
-              result = data.get("result", {})
+              result = data.get("result")
 
-              image_b64 = result.get("image")
-
-              if not image_b64:
-                  print(data)
+              if not isinstance(result, str):
                   raise RuntimeError(
-                      f"No image returned for scene {number}."
+                      f"Unexpected image result for scene {number}."
                   )
 
-              try:
-                  image_bytes = base64.b64decode(
-                      image_b64,
-                      validate=True
-                  )
-              except Exception as exc:
-                  raise RuntimeError(
-                      f"Invalid Base64 image for scene {number}."
-                  ) from exc
+              image_bytes = base64.b64decode(
+                  result,
+                  validate=True
+              )
 
-              try:
-                  image = Image.open(
-                      BytesIO(image_bytes)
-                  )
+              image = Image.open(
+                  BytesIO(image_bytes)
+              )
 
-                  image.load()
+              image.load()
 
-              except Exception as exc:
-                  raise RuntimeError(
-                      f"Invalid image data for scene {number}."
-                  ) from exc
-
-              output_path = (
+              path = (
                   f"scenes/scene{number}.png"
               )
 
               image.save(
-                  output_path,
+                  path,
                   "PNG"
               )
 
               print(
-                  f"Saved {output_path} | "
+                  f"Saved {path}: "
                   f"{image.width}x{image.height}"
               )
 
-          print("")
-          print("All 6 AI images generated.")
+          print("All 6 images generated.")
           PY
 
           python generate_images.py
 
-      # ============================================================
-      # 8. GENERATE SEPARATE NARRATION FOR EACH SCENE
-      # ============================================================
+      # ==========================================================
+      # GENERATE VOICE
+      # ==========================================================
       - name: Generate scene narration
         run: |
           cat > generate_audio.py <<'PY'
@@ -584,20 +595,7 @@ jobs:
           ) as f:
               story = json.load(f)
 
-          async def generate_one(
-              text,
-              output
-          ):
-              communicate = edge_tts.Communicate(
-                  text.strip(),
-                  VOICE,
-                  rate="+0%",
-                  volume="+0%"
-              )
-
-              await communicate.save(output)
-
-          async def main():
+          async def generate():
 
               for scene in story["scenes"]:
 
@@ -608,47 +606,48 @@ jobs:
                   )
 
                   print(
-                      f"Generating narration "
-                      f"for scene {number}..."
+                      f"Generating voice {number}/6..."
                   )
 
-                  await generate_one(
-                      scene["narration"],
-                      output
+                  communicator = edge_tts.Communicate(
+                      str(scene["narration"]).strip(),
+                      VOICE,
+                      rate="+0%",
+                      volume="+0%"
                   )
+
+                  await communicator.save(output)
 
                   if not os.path.exists(output):
                       raise RuntimeError(
-                          f"Audio was not created for scene {number}."
+                          f"Audio missing for scene {number}."
                       )
 
                   size = os.path.getsize(output)
 
                   if size < 1000:
                       raise RuntimeError(
-                          f"Audio for scene {number} "
-                          f"is unexpectedly small."
+                          f"Audio too small for scene {number}."
                       )
 
                   print(
-                      f"Saved {output}: {size} bytes"
+                      f"Created {output}: {size} bytes"
                   )
 
-          asyncio.run(main())
+          asyncio.run(generate())
 
-          print("All narration files generated.")
+          print("All narration generated.")
           PY
 
           python generate_audio.py
 
-      # ============================================================
-      # 9. CREATE SUBTITLES + SCENE VIDEOS
-      # ============================================================
+      # ==========================================================
+      # CREATE SUBTITLED VIDEOS
+      # ==========================================================
       - name: Create subtitled scene videos
         run: |
           cat > create_segments.py <<'PY'
           import json
-          import os
           import subprocess
 
           FONT_DIR = "/usr/share/fonts/truetype/noto"
@@ -660,7 +659,51 @@ jobs:
           ) as f:
               story = json.load(f)
 
-          def get_duration(path):
+          def duration(path):
 
               result = subprocess.check_output([
-      
+                  "ffprobe",
+                  "-v",
+                  "error",
+                  "-show_entries",
+                  "format=duration",
+                  "-of",
+                  "default=noprint_wrappers=1:nokey=1",
+                  path
+              ])
+
+              return float(
+                  result.decode().strip()
+              )
+
+          def ass_escape(text):
+
+              return (
+                  str(text)
+                  .replace("\\", "\\\\")
+                  .replace("{", "\\{")
+                  .replace("}", "\\}")
+              )
+
+          for scene in story["scenes"]:
+
+              number = int(scene["scene"])
+
+              image = (
+                  f"scenes/scene{number}.png"
+              )
+
+              audio = (
+                  f"audio/scene{number}.mp3"
+              )
+
+              ass = (
+                  f"scene{number}.ass"
+              )
+
+              output = (
+                  f"segments/segment{number}.mp4"
+              )
+
+              length = max(
+                  
