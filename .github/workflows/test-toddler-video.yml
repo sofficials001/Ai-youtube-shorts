@@ -9,34 +9,35 @@ jobs:
 
     steps:
 
-      # =========================================================
+      # ============================================================
       # 1. CHECKOUT
-      # =========================================================
+      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # =========================================================
+      # ============================================================
       # 2. PYTHON
-      # =========================================================
+      # ============================================================
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # =========================================================
-      # 3. FFMPEG
-      # =========================================================
-      - name: Install FFmpeg
+      # ============================================================
+      # 3. FFMPEG + HINDI FONT
+      # ============================================================
+      - name: Install FFmpeg and fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg fonts-noto-core
 
-      # =========================================================
+      # ============================================================
       # 4. PYTHON PACKAGES
-      # =========================================================
+      # ============================================================
       - name: Install Python packages
         run: |
           python -m pip install --upgrade pip
+
           pip install \
             requests \
             pillow \
@@ -47,24 +48,399 @@ jobs:
             google-auth-oauthlib \
             google-auth-httplib2
 
-      # =========================================================
+      # ============================================================
       # 5. CREATE DIRECTORIES
-      # =========================================================
+      # ============================================================
       - name: Create working directories
         run: |
+          rm -rf scenes audio segments output
           mkdir -p scenes
+          mkdir -p audio
+          mkdir -p segments
           mkdir -p output
 
-      # =========================================================
-      # 6. GENERATE AI IMAGES
-      # =========================================================
-      - name: Generate AI images
+      # ============================================================
+      # 6. GENERATE STORY + SCRIPT + IMAGE PROMPTS
+      # ============================================================
+      - name: Generate AI story
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          cat > generate_story.py <<'PY'
+          import os
+          import json
+          import random
+          import re
+          import requests
+
+          TOKEN = os.environ["CLOUDFLARE_API_TOKEN"]
+          ACCOUNT_ID = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+
+          MODEL = "@cf/meta/llama-3.2-3b-instruct"
+
+          URL = (
+              f"https://api.cloudflare.com/client/v4/accounts/"
+              f"{ACCOUNT_ID}/ai/run/{MODEL}"
+          )
+
+          HEADERS = {
+              "Authorization": f"Bearer {TOKEN}",
+              "Content-Type": "application/json",
+          }
+
+          THEMES = [
+              "एक छोटे खरगोश और एक खोए हुए पक्षी की भावुक दोस्ती",
+              "एक छोटा खरगोश जो तूफान में अपने दोस्त को बचाने की कोशिश करता है",
+              "एक गरीब छोटा खरगोश जिसे जंगल में एक रहस्यमयी चिट्ठी मिलती है",
+              "एक खरगोश जो अपने दोस्त के लिए आखिरी मौका मिलने पर हिम्मत दिखाता है",
+              "एक छोटा खरगोश जो जंगल में एक घायल जानवर की मदद करता है",
+              "एक खरगोश जिसे लगता है कि उसका दोस्त उसे छोड़कर चला गया है, लेकिन अंत में सच्चाई सामने आती है",
+              "एक छोटा खरगोश जो जंगल में किसी अनजान की मदद करता है और बदले में अप्रत्याशित मदद पाता है",
+              "एक खरगोश जो अपने डर के बावजूद अपने दोस्त को बचाने के लिए अंधेरे जंगल में जाता है",
+          ]
+
+          theme = random.choice(THEMES)
+
+          system_prompt = """
+          तुम Hindi YouTube Shorts के लिए professional viral-story writer हो।
+
+          तुम्हारा काम एक ORIGINAL fictional short story बनाना है।
+
+          कहानी:
+          - लगभग 25 से 40 सेकंड की हो
+          - शुरुआत पहले ही वाक्य में strong hook से हो
+          - boring introduction नहीं होना चाहिए
+          - हर scene में कहानी आगे बढ़नी चाहिए
+          - एक clear problem हो
+          - tension बढ़नी चाहिए
+          - climax होना चाहिए
+          - satisfying emotional ending होना चाहिए
+          - आखिरी scene में natural short CTA हो
+          - बच्चों के लिए डरावनी, खतरनाक या graphic violence नहीं
+          - कोई real person नहीं
+          - कोई copyrighted character नहीं
+          - कोई brand/logo नहीं
+
+          भाषा:
+          - सरल और natural Hindi
+          - narration बोलने में आसान हो
+          - बहुत कठिन शब्द नहीं
+          - English केवल तभी जब natural लगे
+
+          Visual consistency:
+          मुख्य character हमेशा:
+          "एक छोटा प्यारा सफेद खरगोश, नीला छोटा scarf पहने हुए"
+
+          हर scene में इसी character का appearance consistent रहना चाहिए।
+
+          बिल्कुल इसी JSON structure में जवाब दो:
+
+          {
+            "title": "short Hindi title",
+            "description": "short YouTube description",
+            "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+            "scenes": [
+              {
+                "scene": 1,
+                "role": "HOOK",
+                "narration": "Hindi narration",
+                "visual_prompt": "English image generation prompt"
+              },
+              {
+                "scene": 2,
+                "role": "SETUP",
+                "narration": "Hindi narration",
+                "visual_prompt": "English image generation prompt"
+              },
+              {
+                "scene": 3,
+                "role": "PROBLEM",
+                "narration": "Hindi narration",
+                "visual_prompt": "English image generation prompt"
+              },
+              {
+                "scene": 4,
+                "role": "TENSION",
+                "narration": "Hindi narration",
+                "visual_prompt": "English image generation prompt"
+              },
+              {
+                "scene": 5,
+                "role": "CLIMAX",
+                "narration": "Hindi narration",
+                "visual_prompt": "English image generation prompt"
+              },
+              {
+                "scene": 6,
+                "role": "ENDING_CTA",
+                "narration": "Hindi narration ending with a natural short CTA",
+                "visual_prompt": "English image generation prompt"
+              }
+            ]
+          }
+
+          Important:
+          - केवल JSON दो
+          - Markdown code fence मत लगाना
+          - scene count exactly 6 होना चाहिए
+          - narration में scene labels मत लिखना
+          - visual_prompt English में होना चाहिए
+          - visual_prompt में text, letters, subtitles, watermark या logo नहीं
+          """
+
+          user_prompt = f"""
+          आज की कहानी का theme:
+
+          {theme}
+
+          इस theme पर ऊपर दिए structure के अनुसार एक engaging YouTube Short बनाओ।
+          """
+
+          payload = {
+              "messages": [
+                  {
+                      "role": "system",
+                      "content": system_prompt
+                  },
+                  {
+                      "role": "user",
+                      "content": user_prompt
+                  }
+              ],
+              "max_tokens": 1800,
+              "temperature": 0.85,
+              "top_p": 0.9
+          }
+
+          print("Generating story...")
+          print("Theme:", theme)
+
+          response = requests.post(
+              URL,
+              headers=HEADERS,
+              json=payload,
+              timeout=180
+          )
+
+          print("Cloudflare HTTP:", response.status_code)
+
+          if response.status_code != 200:
+              print(response.text[:5000])
+              raise RuntimeError(
+                  "Story generation request failed."
+              )
+
+          data = response.json()
+
+          if not data.get("success"):
+              print(data)
+              raise RuntimeError(
+                  "Cloudflare story generation returned success=false."
+              )
+
+          result = data.get("result", {})
+
+          raw_text = result.get("response", "")
+
+          if not raw_text:
+              print(data)
+              raise RuntimeError(
+                  "No text response returned by Cloudflare."
+              )
+
+          print("Raw AI response:")
+          print(raw_text)
+
+          # --------------------------------------------------------
+          # Extract JSON even if the model accidentally adds text.
+          # --------------------------------------------------------
+          match = re.search(
+              r"\{.*\}",
+              raw_text,
+              re.DOTALL
+          )
+
+          if not match:
+              raise RuntimeError(
+                  "Could not find JSON in AI response."
+              )
+
+          json_text = match.group(0)
+
+          try:
+              story = json.loads(json_text)
+          except json.JSONDecodeError as exc:
+              print("Invalid JSON:")
+              print(json_text)
+              raise RuntimeError(
+                  "AI returned invalid JSON."
+              ) from exc
+
+          # --------------------------------------------------------
+          # Validate structure.
+          # --------------------------------------------------------
+          required_top = [
+              "title",
+              "description",
+              "tags",
+              "scenes"
+          ]
+
+          for key in required_top:
+              if key not in story:
+                  raise RuntimeError(
+                      f"Missing story field: {key}"
+                  )
+
+          scenes = story["scenes"]
+
+          if not isinstance(scenes, list):
+              raise RuntimeError(
+                  "scenes must be a list."
+              )
+
+          if len(scenes) != 6:
+              raise RuntimeError(
+                  f"Expected exactly 6 scenes, got {len(scenes)}."
+              )
+
+          required_scene_fields = [
+              "scene",
+              "role",
+              "narration",
+              "visual_prompt"
+          ]
+
+          expected_roles = [
+              "HOOK",
+              "SETUP",
+              "PROBLEM",
+              "TENSION",
+              "CLIMAX",
+              "ENDING_CTA"
+          ]
+
+          for index, scene in enumerate(scenes):
+
+              for key in required_scene_fields:
+                  if key not in scene:
+                      raise RuntimeError(
+                          f"Scene {index + 1} is missing {key}."
+                      )
+
+              if not str(scene["narration"]).strip():
+                  raise RuntimeError(
+                      f"Scene {index + 1} has empty narration."
+                  )
+
+              if not str(scene["visual_prompt"]).strip():
+                  raise RuntimeError(
+                      f"Scene {index + 1} has empty visual prompt."
+                  )
+
+              role = str(scene["role"]).strip()
+
+              if role != expected_roles[index]:
+                  print(
+                      f"Warning: scene {index + 1} role was "
+                      f"{role}, expected {expected_roles[index]}"
+                  )
+
+          # --------------------------------------------------------
+          # Add mandatory visual consistency instruction.
+          # --------------------------------------------------------
+          character = (
+              "same main character: a small cute white rabbit "
+              "wearing a small blue scarf, consistent character "
+              "design, same face, same proportions"
+          )
+
+          global_visual_rules = (
+              ", cinematic 3D animated movie style, "
+              "high detail, expressive characters, "
+              "beautiful lighting, vertical composition, "
+              "no text, no letters, no subtitles, no watermark, "
+              "no logo, no brand"
+          )
+
+          for scene in scenes:
+              scene["visual_prompt"] = (
+                  character
+                  + ", "
+                  + str(scene["visual_prompt"]).strip()
+                  + global_visual_rules
+              )
+
+          # --------------------------------------------------------
+          # Save story.
+          # --------------------------------------------------------
+          with open(
+              "story.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              json.dump(
+                  story,
+                  f,
+                  ensure_ascii=False,
+                  indent=2
+              )
+
+          # Save simple text version for debugging/artifact.
+          with open(
+              "story.txt",
+              "w",
+              encoding="utf-8"
+          ) as f:
+
+              f.write(
+                  f"TITLE:\n{story['title']}\n\n"
+              )
+
+              f.write(
+                  f"DESCRIPTION:\n{story['description']}\n\n"
+              )
+
+              for scene in scenes:
+                  f.write(
+                      f"SCENE {scene['scene']} "
+                      f"({scene['role']})\n"
+                  )
+
+                  f.write(
+                      f"{scene['narration']}\n\n"
+                  )
+
+          print("")
+          print("==========================================")
+          print("AI STORY GENERATED")
+          print("==========================================")
+          print("TITLE:", story["title"])
+
+          for scene in scenes:
+              print(
+                  f"Scene {scene['scene']} "
+                  f"[{scene['role']}]: "
+                  f"{scene['narration']}"
+              )
+
+          print("==========================================")
+          PY
+
+          python generate_story.py
+
+      # ============================================================
+      # 7. GENERATE SIX AI IMAGES
+      # ============================================================
+      - name: Generate AI scenes
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           cat > generate_images.py <<'PY'
           import os
+          import json
           import base64
           import requests
           from io import BytesIO
@@ -82,41 +458,31 @@ jobs:
 
           HEADERS = {
               "Authorization": f"Bearer {TOKEN}",
-              "Content-Type": "application/json",
+              "Content-Type": "application/json"
           }
 
-          PROMPTS = [
-              """
-              A cute small white rabbit sitting in a beautiful colorful
-              village garden, warm morning sunlight, flowers everywhere,
-              adorable 3D animated movie style, cinematic lighting,
-              highly detailed, vertical composition, no text,
-              no watermark
-              """,
+          with open(
+              "story.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              story = json.load(f)
 
-              """
-              The same cute small white rabbit helping a tiny lost bird
-              in a beautiful colorful forest, emotional friendly moment,
-              warm cinematic lighting, adorable 3D animated movie style,
-              highly detailed, vertical composition, no text,
-              no watermark
-              """,
+          for scene in story["scenes"]:
 
-              """
-              The same cute white rabbit and the tiny bird happily
-              returning to the village together at sunset, beautiful
-              glowing sky, heartwarming ending, adorable 3D animated
-              movie style, highly detailed, vertical composition,
-              no text, no watermark
-              """
-          ]
+              number = int(scene["scene"])
 
-          for index, prompt in enumerate(PROMPTS, start=1):
+              prompt = " ".join(
+                  scene["visual_prompt"].split()
+              )
 
-              print(f"Generating scene {index}...")
+              print("")
+              print(
+                  f"Generating image for scene {number}..."
+              )
 
               payload = {
-                  "prompt": " ".join(prompt.split()),
+                  "prompt": prompt,
                   "steps": 4
               }
 
@@ -127,45 +493,33 @@ jobs:
                   timeout=180
               )
 
-              print("Cloudflare HTTP status:", response.status_code)
+              print(
+                  "Cloudflare HTTP:",
+                  response.status_code
+              )
 
               if response.status_code != 200:
-                  print("Cloudflare response:")
-                  print(response.text[:4000])
+                  print(response.text[:5000])
                   raise RuntimeError(
-                      f"Cloudflare image generation failed for scene {index}"
+                      f"Image generation failed for scene {number}."
                   )
 
-              try:
-                  data = response.json()
-              except Exception:
-                  print("Response was not valid JSON:")
-                  print(response.text[:4000])
-                  raise
+              data = response.json()
 
               if not data.get("success"):
-                  print("Cloudflare reported failure:")
                   print(data)
                   raise RuntimeError(
-                      f"Cloudflare returned success=false for scene {index}"
+                      f"Cloudflare failed for scene {number}."
                   )
 
-              result = data.get("result")
-
-              if not isinstance(result, dict):
-                  print("Unexpected result:")
-                  print(data)
-                  raise RuntimeError(
-                      f"Unexpected Cloudflare result for scene {index}"
-                  )
+              result = data.get("result", {})
 
               image_b64 = result.get("image")
 
               if not image_b64:
-                  print("No image field returned.")
                   print(data)
                   raise RuntimeError(
-                      f"No image returned for scene {index}"
+                      f"No image returned for scene {number}."
                   )
 
               try:
@@ -175,18 +529,24 @@ jobs:
                   )
               except Exception as exc:
                   raise RuntimeError(
-                      f"Could not decode Cloudflare image for scene {index}"
+                      f"Invalid Base64 image for scene {number}."
                   ) from exc
 
               try:
-                  image = Image.open(BytesIO(image_bytes))
+                  image = Image.open(
+                      BytesIO(image_bytes)
+                  )
+
                   image.load()
+
               except Exception as exc:
                   raise RuntimeError(
-                      f"Cloudflare returned invalid image data for scene {index}"
+                      f"Invalid image data for scene {number}."
                   ) from exc
 
-              output_path = f"scenes/scene{index}.png"
+              output_path = (
+                  f"scenes/scene{number}.png"
+              )
 
               image.save(
                   output_path,
@@ -195,406 +555,112 @@ jobs:
 
               print(
                   f"Saved {output_path} | "
-                  f"{image.width}x{image.height} | "
-                  f"{len(image_bytes)} bytes"
+                  f"{image.width}x{image.height}"
               )
 
-          print("All 3 AI images generated successfully.")
+          print("")
+          print("All 6 AI images generated.")
           PY
 
           python generate_images.py
 
-      # =========================================================
-      # 7. GENERATE HINDI VOICE
-      # =========================================================
-      - name: Generate narration
+      # ============================================================
+      # 8. GENERATE SEPARATE NARRATION FOR EACH SCENE
+      # ============================================================
+      - name: Generate scene narration
         run: |
-          cat > generate_voice.py <<'PY'
+          cat > generate_audio.py <<'PY'
           import asyncio
+          import json
           import os
           import edge_tts
 
-          TEXT = """
-          एक छोटे से गाँव में एक प्यारा सा खरगोश रहता था।
-          एक दिन उसे जंगल में एक छोटा सा खोया हुआ पक्षी मिला।
-          खरगोश ने उसकी मदद की और उसे सुरक्षित घर पहुँचा दिया।
-          उस दिन दोनों बहुत अच्छे दोस्त बन गए।
-          """
-
           VOICE = "hi-IN-SwaraNeural"
-          OUTPUT = "narration.mp3"
 
-          async def main():
-              communicator = edge_tts.Communicate(
-                  TEXT.strip(),
+          with open(
+              "story.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              story = json.load(f)
+
+          async def generate_one(
+              text,
+              output
+          ):
+              communicate = edge_tts.Communicate(
+                  text.strip(),
                   VOICE,
                   rate="+0%",
                   volume="+0%"
               )
 
-              await communicator.save(OUTPUT)
+              await communicate.save(output)
 
-          asyncio.run(main())
+          async def main():
 
-          if not os.path.exists(OUTPUT):
-              raise RuntimeError("Narration file was not created.")
+              for scene in story["scenes"]:
 
-          size = os.path.getsize(OUTPUT)
+                  number = int(scene["scene"])
 
-          print(f"Narration size: {size} bytes")
-
-          if size < 1000:
-              raise RuntimeError(
-                  "Narration file is unexpectedly small."
-              )
-
-          print("Narration generated successfully.")
-          PY
-
-          python generate_voice.py
-
-      # =========================================================
-      # 8. CREATE VIDEO SEGMENTS
-      # =========================================================
-      - name: Create video segments
-        run: |
-          for i in 1 2 3
-          do
-            ffmpeg -y \
-              -loop 1 \
-              -i "scenes/scene${i}.png" \
-              -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p" \
-              -t 3 \
-              -r 30 \
-              -c:v libx264 \
-              -pix_fmt yuv420p \
-              "segment${i}.mp4"
-          done
-
-          echo "Video segments created."
-
-      # =========================================================
-      # 9. JOIN VIDEO SEGMENTS
-      # =========================================================
-      - name: Join video segments
-        run: |
-          cat > concat.txt <<'EOF'
-          file 'segment1.mp4'
-          file 'segment2.mp4'
-          file 'segment3.mp4'
-          EOF
-
-          ffmpeg -y \
-            -f concat \
-            -safe 0 \
-            -i concat.txt \
-            -c copy \
-            silent_video.mp4
-
-          echo "Video segments joined."
-
-      # =========================================================
-      # 10. ADD NARRATION
-      # =========================================================
-      - name: Add narration
-        run: |
-          ffmpeg -y \
-            -i silent_video.mp4 \
-            -i narration.mp3 \
-            -filter_complex "[1:a]aresample=48000,apad,atrim=duration=9[a]" \
-            -map 0:v:0 \
-            -map "[a]" \
-            -c:v copy \
-            -c:a aac \
-            -b:a 128k \
-            -t 9 \
-            -movflags +faststart \
-            output/final_short.mp4
-
-          echo "Final video created."
-
-      # =========================================================
-      # 11. VERIFY VIDEO
-      # =========================================================
-      - name: Verify final video
-        run: |
-          python - <<'PY'
-          import json
-          import subprocess
-          import numpy as np
-
-          VIDEO = "output/final_short.mp4"
-
-          probe_command = [
-              "ffprobe",
-              "-v",
-              "error",
-              "-show_entries",
-              "format=duration",
-              "-show_streams",
-              "-of",
-              "json",
-              VIDEO
-          ]
-
-          result = subprocess.check_output(
-              probe_command
-          )
-
-          data = json.loads(result)
-
-          duration = float(
-              data["format"]["duration"]
-          )
-
-          streams = data["streams"]
-
-          video_streams = [
-              s for s in streams
-              if s.get("codec_type") == "video"
-          ]
-
-          audio_streams = [
-              s for s in streams
-              if s.get("codec_type") == "audio"
-          ]
-
-          if not video_streams:
-              raise RuntimeError("No video stream found.")
-
-          if not audio_streams:
-              raise RuntimeError("No audio stream found.")
-
-          video = video_streams[0]
-          audio = audio_streams[0]
-
-          width = int(video["width"])
-          height = int(video["height"])
-          video_codec = video["codec_name"]
-          audio_codec = audio["codec_name"]
-
-          print("Duration:", duration)
-          print("Resolution:", width, "x", height)
-          print("Video codec:", video_codec)
-          print("Audio codec:", audio_codec)
-
-          if width != 1080:
-              raise RuntimeError(
-                  f"Wrong width: {width}"
-              )
-
-          if height != 1920:
-              raise RuntimeError(
-                  f"Wrong height: {height}"
-              )
-
-          if duration < 8.5 or duration > 9.5:
-              raise RuntimeError(
-                  f"Unexpected duration: {duration}"
-              )
-
-          if video_codec != "h264":
-              raise RuntimeError(
-                  f"Wrong video codec: {video_codec}"
-              )
-
-          if audio_codec != "aac":
-              raise RuntimeError(
-                  f"Wrong audio codec: {audio_codec}"
-              )
-
-          # Decode the audio and check whether it contains actual sound.
-          audio_command = [
-              "ffmpeg",
-              "-v",
-              "error",
-              "-i",
-              VIDEO,
-              "-map",
-              "0:a:0",
-              "-f",
-              "s16le",
-              "-ac",
-              "1",
-              "-ar",
-              "16000",
-              "pipe:1"
-          ]
-
-          pcm = subprocess.check_output(
-              audio_command
-          )
-
-          samples = np.frombuffer(
-              pcm,
-              dtype=np.int16
-          ).astype(np.float32)
-
-          if samples.size == 0:
-              raise RuntimeError(
-                  "No audio samples were found."
-              )
-
-          rms = float(
-              np.sqrt(np.mean(samples ** 2))
-          )
-
-          print("Audio RMS:", rms)
-
-          if rms < 100:
-              raise RuntimeError(
-                  "Audio appears to be silent."
-              )
-
-          print("")
-          print("VIDEO VERIFICATION PASSED")
-          PY
-
-      # =========================================================
-      # 12. UPLOAD TO YOUTUBE
-      # =========================================================
-      - name: Upload to YouTube
-        env:
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-        run: |
-          cat > upload_youtube.py <<'PY'
-          import os
-          from google.oauth2.credentials import Credentials
-          from google.auth.transport.requests import Request
-          from googleapiclient.discovery import build
-          from googleapiclient.http import MediaFileUpload
-
-          CLIENT_ID = os.environ["YOUTUBE_CLIENT_ID"]
-          CLIENT_SECRET = os.environ["YOUTUBE_CLIENT_SECRET"]
-          REFRESH_TOKEN = os.environ["YOUTUBE_REFRESH_TOKEN"]
-
-          if not CLIENT_ID:
-              raise RuntimeError(
-                  "YOUTUBE_CLIENT_ID is missing."
-              )
-
-          if not CLIENT_SECRET:
-              raise RuntimeError(
-                  "YOUTUBE_CLIENT_SECRET is missing."
-              )
-
-          if not REFRESH_TOKEN:
-              raise RuntimeError(
-                  "YOUTUBE_REFRESH_TOKEN is missing."
-              )
-
-          SCOPES = [
-              "https://www.googleapis.com/auth/youtube.upload"
-          ]
-
-          credentials = Credentials(
-              token=None,
-              refresh_token=REFRESH_TOKEN,
-              token_uri="https://oauth2.googleapis.com/token",
-              client_id=CLIENT_ID,
-              client_secret=CLIENT_SECRET,
-              scopes=SCOPES
-          )
-
-          print("Refreshing YouTube access token...")
-
-          credentials.refresh(
-              Request()
-          )
-
-          print("Authentication successful.")
-
-          youtube = build(
-              "youtube",
-              "v3",
-              credentials=credentials
-          )
-
-          request_body = {
-              "snippet": {
-                  "title": "प्यारा खरगोश और उसका नया दोस्त 🐰 #Shorts",
-                  "description": (
-                      "एक प्यारे खरगोश और छोटे पक्षी की "
-                      "दिल छू लेने वाली कहानी।\n\n"
-                      "#Shorts #HindiStory #Rabbit #AI"
-                  ),
-                  "tags": [
-                      "shorts",
-                      "hindi story",
-                      "rabbit",
-                      "kids story",
-                      "AI story"
-                  ],
-                  "categoryId": "22"
-              },
-
-              "status": {
-                  "privacyStatus": "private",
-                  "selfDeclaredMadeForKids": True
-              }
-          }
-
-          media = MediaFileUpload(
-              "output/final_short.mp4",
-              mimetype="video/mp4",
-              resumable=True,
-              chunksize=1024 * 1024
-          )
-
-          request = youtube.videos().insert(
-              part="snippet,status",
-              body=request_body,
-              media_body=media
-          )
-
-          print("Uploading video to YouTube...")
-
-          response = None
-
-          while response is None:
-
-              status, response = request.next_chunk()
-
-              if status:
-                  progress = int(
-                      status.progress() * 100
+                  output = (
+                      f"audio/scene{number}.mp3"
                   )
 
                   print(
-                      f"Upload progress: {progress}%"
+                      f"Generating narration "
+                      f"for scene {number}..."
                   )
 
-          if not response or "id" not in response:
-              raise RuntimeError(
-                  f"YouTube upload returned an unexpected response: "
-                  f"{response}"
-              )
+                  await generate_one(
+                      scene["narration"],
+                      output
+                  )
 
-          video_id = response["id"]
+                  if not os.path.exists(output):
+                      raise RuntimeError(
+                          f"Audio was not created for scene {number}."
+                      )
 
-          print("")
-          print("========================================")
-          print("YOUTUBE UPLOAD SUCCESSFUL")
-          print("========================================")
-          print("Video ID:", video_id)
-          print(
-              "Video URL:",
-              f"https://www.youtube.com/watch?v={video_id}"
-          )
-          print("Privacy: PRIVATE")
-          print("========================================")
+                  size = os.path.getsize(output)
+
+                  if size < 1000:
+                      raise RuntimeError(
+                          f"Audio for scene {number} "
+                          f"is unexpectedly small."
+                      )
+
+                  print(
+                      f"Saved {output}: {size} bytes"
+                  )
+
+          asyncio.run(main())
+
+          print("All narration files generated.")
           PY
 
-          python upload_youtube.py
+          python generate_audio.py
 
-      # =========================================================
-      # 13. SAVE VIDEO AS GITHUB ARTIFACT
-      # =========================================================
-      - name: Upload generated video artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-youtube-short
-          path: output/final_short.mp4
-          if-no-files-found: error
+      # ============================================================
+      # 9. CREATE SUBTITLES + SCENE VIDEOS
+      # ============================================================
+      - name: Create subtitled scene videos
+        run: |
+          cat > create_segments.py <<'PY'
+          import json
+          import os
+          import subprocess
+
+          FONT_DIR = "/usr/share/fonts/truetype/noto"
+
+          with open(
+              "story.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              story = json.load(f)
+
+          def get_duration(path):
+
+              result = subprocess.check_output([
+      
