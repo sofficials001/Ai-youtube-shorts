@@ -14,7 +14,6 @@ from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parent.parent
-
 SCENES = ROOT / "scenes"
 AUDIO = ROOT / "audio"
 SEGMENTS = ROOT / "segments"
@@ -24,21 +23,14 @@ for folder in (SCENES, AUDIO, SEGMENTS, OUTPUT):
     folder.mkdir(parents=True, exist_ok=True)
 
 
-# ============================================================
-# CLOUDFLARE CONFIG
-# ============================================================
-
 CF_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN")
 CF_ACCOUNT = os.getenv("CLOUDFLARE_ACCOUNT_ID")
 
 if not CF_TOKEN or not CF_ACCOUNT:
-    raise RuntimeError(
-        "Missing CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID"
-    )
+    raise RuntimeError("Missing CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID")
 
 LLM_MODEL = "@cf/meta/llama-3.2-3b-instruct"
 IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell"
-
 VOICE = "hi-IN-SwaraNeural"
 
 HEADERS = {
@@ -49,20 +41,16 @@ HEADERS = {
 
 def cf_url(model):
     return (
-        "https://api.cloudflare.com/client/v4/accounts/"
+        f"https://api.cloudflare.com/client/v4/accounts/"
         f"{CF_ACCOUNT}/ai/run/{model}"
     )
 
 
-# ============================================================
-# COMMAND RUNNER
-# ============================================================
-
 def run_command(args):
-    print("$ " + " ".join(args))
+    print("$ " + " ".join(str(x) for x in args))
 
     result = subprocess.run(
-        args,
+        [str(x) for x in args],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -74,15 +62,12 @@ def run_command(args):
 
     if result.returncode != 0:
         raise RuntimeError(
-            f"Command failed with exit code {result.returncode}"
+            "Command failed with exit code "
+            f"{result.returncode}"
         )
 
     return result.stdout
 
-
-# ============================================================
-# FALLBACK STORY
-# ============================================================
 
 def fallback_story():
     return {
@@ -103,12 +88,10 @@ def fallback_story():
         "scenes": [
             {
                 "type": "HOOK",
-
                 "narration": (
                     "रुको... इस छोटे खरगोश ने अपनी जान बचाने "
                     "के बजाय किसी और को बचाना क्यों चुना?"
                 ),
-
                 "visual": (
                     "A cute white rabbit wearing a blue scarf "
                     "standing alone in a dark forest at dusk, "
@@ -118,13 +101,11 @@ def fallback_story():
 
             {
                 "type": "SETUP",
-
                 "narration": (
                     "हर शाम वह खरगोश जंगल के किनारे एक पुराने "
                     "पेड़ के पास जाता था, जहाँ उसे एक अजीब आवाज़ "
                     "सुनाई देती थी।"
                 ),
-
                 "visual": (
                     "The same cute white rabbit wearing a blue scarf "
                     "walking beside an old tree at sunset, "
@@ -134,12 +115,10 @@ def fallback_story():
 
             {
                 "type": "PROBLEM",
-
                 "narration": (
                     "एक दिन तेज़ बारिश शुरू हुई और पास की नदी "
                     "का पानी तेजी से बढ़ने लगा।"
                 ),
-
                 "visual": (
                     "The same white rabbit wearing a blue scarf "
                     "watching a rapidly rising river during heavy rain, "
@@ -149,12 +128,10 @@ def fallback_story():
 
             {
                 "type": "TENSION",
-
                 "narration": (
                     "तभी उसे झाड़ियों से एक नन्ही चिड़िया की "
                     "आवाज़ सुनाई दी। वह पानी के बीच फँसी थी।"
                 ),
-
                 "visual": (
                     "The same white rabbit wearing a blue scarf "
                     "discovering a tiny frightened bird trapped "
@@ -165,12 +142,10 @@ def fallback_story():
 
             {
                 "type": "CLIMAX",
-
                 "narration": (
                     "खरगोश डर रहा था, फिर भी वह पानी में उतर गया "
                     "और चिड़िया को सुरक्षित किनारे तक ले आया।"
                 ),
-
                 "visual": (
                     "The same brave white rabbit wearing a blue scarf "
                     "helping a tiny bird reach a safe riverbank "
@@ -181,13 +156,11 @@ def fallback_story():
 
             {
                 "type": "ENDING_CTA",
-
                 "narration": (
                     "अगली सुबह चिड़िया उड़ गई, लेकिन जाने से पहले "
                     "उसने अपने पंख से खरगोश का नीला स्कार्फ छुआ। "
                     "ऐसी कहानी पसंद आए तो फॉलो कर देना।"
                 ),
-
                 "visual": (
                     "The same white rabbit wearing a blue scarf "
                     "beside the rescued bird at sunrise, "
@@ -199,12 +172,7 @@ def fallback_story():
     }
 
 
-# ============================================================
-# STORY PARSER
-# ============================================================
-
 def parse_story(value):
-
     if isinstance(value, dict):
 
         if isinstance(value.get("scenes"), list):
@@ -265,7 +233,9 @@ def parse_story(value):
 
         try:
 
-            obj = json.loads(candidate)
+            obj = json.loads(
+                candidate
+            )
 
             if (
                 isinstance(obj, dict)
@@ -284,7 +254,9 @@ def parse_story(value):
 
         try:
 
-            obj = ast.literal_eval(candidate)
+            obj = ast.literal_eval(
+                candidate
+            )
 
             if (
                 isinstance(obj, dict)
@@ -305,16 +277,18 @@ def parse_story(value):
     return None
 
 
-# ============================================================
-# STORY NORMALIZATION
-# ============================================================
-
 def normalize_story(story):
 
-    scenes = (
-        story.get("scenes")
-        if isinstance(story, dict)
-        else None
+    if not isinstance(
+        story,
+        dict,
+    ):
+        raise ValueError(
+            "Story is not an object"
+        )
+
+    scenes = story.get(
+        "scenes"
     )
 
     if (
@@ -325,7 +299,7 @@ def normalize_story(story):
             "Story must contain exactly 6 scenes"
         )
 
-    scene_types = [
+    types = [
         "HOOK",
         "SETUP",
         "PROBLEM",
@@ -338,8 +312,10 @@ def normalize_story(story):
         scenes
     ):
 
-        if not isinstance(scene, dict):
-
+        if not isinstance(
+            scene,
+            dict,
+        ):
             raise ValueError(
                 f"Invalid scene {index + 1}"
             )
@@ -372,17 +348,16 @@ def normalize_story(story):
                 "has no visual"
             )
 
-        scene["type"] = scene_types[index]
+        scene["type"] = types[index]
 
         scene["narration"] = narration
 
         scene["visual"] = (
             visual
             + " Keep the same character appearance "
-            + "throughout all scenes. "
+            + "throughout the story. "
             + "Vertical cinematic composition. "
-            + "No text, no letters, no logo, "
-            + "no watermark."
+            + "No text, letters, logo, or watermark."
         )
 
     story["title"] = str(
@@ -408,8 +383,10 @@ def normalize_story(story):
         ],
     )
 
-    if not isinstance(tags, list):
-
+    if not isinstance(
+        tags,
+        list,
+    ):
         tags = [
             "shorts",
             "hindi",
@@ -436,10 +413,6 @@ def normalize_story(story):
 
     return story
 
-
-# ============================================================
-# SAVE STORY
-# ============================================================
 
 def save_story(story):
 
@@ -482,42 +455,38 @@ def save_story(story):
     )
 
 
-# ============================================================
-# GENERATE STORY
-# ============================================================
-
 def generate_story():
 
-    prompt = (
-        "Create a high-retention Hindi YouTube Shorts story.\n"
-        "Return ONLY valid JSON.\n\n"
-        "Use exactly 6 scenes in this order:\n"
-        "HOOK, SETUP, PROBLEM, TENSION, CLIMAX, ENDING_CTA.\n\n"
-        "Requirements:\n"
-        "- Start with a powerful curiosity hook.\n"
-        "- Make viewers want to know what happens next.\n"
-        "- Use a clear character and situation.\n"
-        "- Introduce a real problem and increasing tension.\n"
-        "- Give the story a meaningful climax.\n"
-        "- Give the story a proper ending, not an abrupt stop.\n"
-        "- Put a short natural CTA only at the end.\n"
-        "- Use natural spoken Hindi.\n"
-        "- Target 25 to 55 seconds total narration.\n"
-        "- Do not put explanations outside the JSON.\n\n"
-        "JSON format:\n"
-        "{\n"
-        '  "title": "short title",\n'
-        '  "description": "short description",\n'
-        '  "tags": ["shorts", "hindi story"],\n'
-        '  "scenes": [\n'
-        '    {"type":"HOOK","narration":"Hindi narration","visual":"English visual prompt"},\n'
-        '    {"type":"SETUP","narration":"Hindi narration","visual":"English visual prompt"},\n'
-        '    {"type":"PROBLEM","narration":"Hindi narration","visual":"English visual prompt"},\n'
-        '    {"type":"TENSION","narration":"Hindi narration","visual":"English visual prompt"},\n'
-        '    {"type":"CLIMAX","narration":"Hindi narration","visual":"English visual prompt"},\n'
-        '    {"type":"ENDING_CTA","narration":"Hindi narration","visual":"English visual prompt"}\n'
-        "  ]\n"
-        "}"
+    prompt_parts = [
+        "Create a high-retention Hindi YouTube Shorts story.",
+        "Return ONLY valid JSON.",
+        "",
+        "Use exactly 6 scenes in this exact order:",
+        "HOOK, SETUP, PROBLEM, TENSION, CLIMAX, ENDING_CTA.",
+        "",
+        "Requirements:",
+        "- Start with a powerful curiosity hook.",
+        "- Make viewers want to know what happens next.",
+        "- Introduce a clear character and problem.",
+        "- Increase tension before the climax.",
+        "- Give the story a real ending.",
+        "- Put a short natural CTA only at the very end.",
+        "- Use natural spoken Hindi.",
+        "- Target 25 to 55 seconds total narration.",
+        "- Do not put explanations outside the JSON.",
+        "",
+        "JSON format:",
+        '{"title":"...","description":"...","tags":["shorts"],'
+        '"scenes":[{"type":"HOOK","narration":"...","visual":"..."},'
+        '{"type":"SETUP","narration":"...","visual":"..."},'
+        '{"type":"PROBLEM","narration":"...","visual":"..."},'
+        '{"type":"TENSION","narration":"...","visual":"..."},'
+        '{"type":"CLIMAX","narration":"...","visual":"..."},'
+        '{"type":"ENDING_CTA","narration":"...","visual":"..."}]}',
+    ]
+
+    prompt = "\n".join(
+        prompt_parts
     )
 
     payload = {
@@ -534,7 +503,9 @@ def generate_story():
                 "role": "user",
                 "content": prompt,
             },
-        ]
+        ],
+        "max_tokens": 1200,
+        "temperature": 0.8,
     }
 
     for attempt in range(3):
@@ -555,8 +526,10 @@ def generate_story():
 
             response.raise_for_status()
 
+            data = response.json()
+
             story = parse_story(
-                response.json()
+                data
             )
 
             if story:
@@ -576,7 +549,8 @@ def generate_story():
                 return story
 
             print(
-                "AI response could not be parsed."
+                "AI story response "
+                "could not be parsed."
             )
 
         except Exception as error:
@@ -604,22 +578,21 @@ def generate_story():
     return story
 
 
-# ============================================================
-# IMAGE DECODER
-# ============================================================
-
 def decode_image(value):
 
-    if isinstance(value, str):
+    if isinstance(
+        value,
+        str,
+    ):
 
-        value = value.strip()
+        text = value.strip()
 
         if (
-            value.startswith("data:image")
-            and "," in value
+            text.startswith("data:image")
+            and "," in text
         ):
 
-            value = value.split(
+            text = text.split(
                 ",",
                 1,
             )[1]
@@ -627,7 +600,7 @@ def decode_image(value):
         try:
 
             return base64.b64decode(
-                value,
+                text,
                 validate=True,
             )
 
@@ -635,7 +608,10 @@ def decode_image(value):
 
             return None
 
-    if isinstance(value, dict):
+    if isinstance(
+        value,
+        dict,
+    ):
 
         for key in (
             "image",
@@ -653,7 +629,10 @@ def decode_image(value):
                 if result:
                     return result
 
-    if isinstance(value, list):
+    if isinstance(
+        value,
+        list,
+    ):
 
         for item in value:
 
@@ -667,11 +646,7 @@ def decode_image(value):
     return None
 
 
-# ============================================================
-# EXTRACT IMAGE
-# ============================================================
-
-def extract_image_bytes(response):
+def extract_image(response):
 
     content_type = (
         response.headers
@@ -703,7 +678,6 @@ def extract_image_bytes(response):
         )
 
         if result:
-
             return result
 
     result = decode_image(
@@ -711,7 +685,6 @@ def extract_image_bytes(response):
     )
 
     if result:
-
         return result
 
     raise RuntimeError(
@@ -719,10 +692,6 @@ def extract_image_bytes(response):
         "a usable image"
     )
 
-
-# ============================================================
-# GENERATE IMAGES
-# ============================================================
 
 def generate_images(story):
 
@@ -752,7 +721,7 @@ def generate_images(story):
                     headers=HEADERS,
                     json={
                         "prompt": scene["visual"],
-                        "num_steps": 4,
+                        "steps": 4,
                     },
                     timeout=180,
                 )
@@ -762,24 +731,11 @@ def generate_images(story):
                     response.status_code,
                 )
 
-                if not response.ok:
-
-                    print(
-                        "Cloudflare response:",
-                        response.text[:1000],
-                    )
-
                 response.raise_for_status()
 
-                raw = extract_image_bytes(
+                raw = extract_image(
                     response
                 )
-
-                if not raw:
-
-                    raise RuntimeError(
-                        "Empty image response"
-                    )
 
                 with Image.open(
                     BytesIO(raw)
@@ -824,10 +780,6 @@ def generate_images(story):
                 f"for scene {index}"
             )
 
-
-# ============================================================
-# TEXT TO SPEECH
-# ============================================================
 
 async def create_tts(
     text,
@@ -891,10 +843,6 @@ def generate_audio(story):
         )
 
 
-# ============================================================
-# AUDIO DURATION
-# ============================================================
-
 def get_duration(path):
 
     result = run_command(
@@ -904,4 +852,114 @@ def get_duration(path):
             "error",
             "-show_entries",
             "format=duration",
-            
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ]
+    )
+
+    try:
+
+        value = float(
+            result.strip()
+        )
+
+    except ValueError as error:
+
+        raise RuntimeError(
+            f"Could not read duration "
+            f"of {path}"
+        ) from error
+
+    if value <= 0:
+
+        raise RuntimeError(
+            f"Invalid duration for {path}"
+        )
+
+    return value
+
+
+def ass_time(seconds):
+
+    total = max(
+        1,
+        int(
+            round(
+                seconds * 100
+            )
+        ),
+    )
+
+    hours = total // 360000
+
+    minutes = (
+        total % 360000
+    ) // 6000
+
+    seconds_value = (
+        total % 6000
+    ) // 100
+
+    hundredths = (
+        total % 100
+    )
+
+    return (
+        f"{hours}:"
+        f"{minutes:02d}:"
+        f"{seconds_value:02d}."
+        f"{hundredths:02d}"
+    )
+
+
+def make_ass(
+    text,
+    seconds,
+    path,
+):
+
+    safe = (
+        text
+        .replace(
+            "\\",
+            "\\\\",
+        )
+        .replace(
+            "{",
+            "\\{",
+        )
+        .replace(
+            "}",
+            "\\}",
+        )
+        .replace(
+            "\n",
+            " ",
+        )
+    )
+
+    lines = [
+        "[Script Info]",
+        "ScriptType: v4.00+",
+        "PlayResX: 1080",
+        "PlayResY: 1920",
+        "",
+        "[V4+ Styles]",
+        (
+            "Format: Name, Fontname, Fontsize, PrimaryColour, "
+            "SecondaryColour, OutlineColour, BackColour, Bold, "
+            "Italic, Underline, StrikeOut, ScaleX, ScaleY, "
+            "Spacing, Angle, BorderStyle, Outline, Shadow, "
+            "Alignment, MarginL, MarginR, MarginV, Encoding"
+        ),
+        (
+            "Style: Default,Noto Sans Devanagari,62,"
+            "&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,"
+            "-1,0,0,0,100,100,0,0,1,5,2,2,60,60,170,-1"
+        ),
+        "",
+        "[Events]",
+        (
+            "Format: Layer, Start, End, Style, Name, "
+            "MarginL, MarginR, MarginV, Effec
