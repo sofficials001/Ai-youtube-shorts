@@ -25,7 +25,7 @@ for folder in (SCENES, AUDIO, SEGMENTS, OUTPUT):
 
 
 # ============================================================
-# CLOUDFLARE
+# CLOUDFLARE CONFIG
 # ============================================================
 
 CF_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN")
@@ -49,7 +49,7 @@ HEADERS = {
 
 def cf_url(model):
     return (
-        f"https://api.cloudflare.com/client/v4/accounts/"
+        "https://api.cloudflare.com/client/v4/accounts/"
         f"{CF_ACCOUNT}/ai/run/{model}"
     )
 
@@ -58,11 +58,11 @@ def cf_url(model):
 # COMMAND RUNNER
 # ============================================================
 
-def command(cmd):
-    print(">", " ".join(cmd))
+def run_command(args):
+    print("$ " + " ".join(args))
 
     result = subprocess.run(
-        cmd,
+        args,
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -74,7 +74,7 @@ def command(cmd):
 
     if result.returncode != 0:
         raise RuntimeError(
-            "Command failed: " + " ".join(cmd)
+            f"Command failed with exit code {result.returncode}"
         )
 
     return result.stdout
@@ -203,19 +203,23 @@ def fallback_story():
 # STORY PARSER
 # ============================================================
 
-def parse_story(data):
+def parse_story(value):
 
-    if isinstance(data, dict):
+    if isinstance(value, dict):
 
-        if isinstance(data.get("scenes"), list):
-            return data
+        if isinstance(value.get("scenes"), list):
+            return value
 
-        for key in ("result", "response", "output"):
+        for key in (
+            "result",
+            "response",
+            "output",
+        ):
 
-            if key in data:
+            if key in value:
 
                 found = parse_story(
-                    data[key]
+                    value[key]
                 )
 
                 if found:
@@ -223,19 +227,25 @@ def parse_story(data):
 
         return None
 
-    if not isinstance(data, str):
+    if not isinstance(value, str):
         return None
 
-    text = data.strip()
+    text = value.strip()
 
     if text.startswith("```"):
 
         lines = text.splitlines()
 
-        if lines and lines[0].strip().startswith("```"):
+        if (
+            lines
+            and lines[0].strip().startswith("```")
+        ):
             lines = lines[1:]
 
-        if lines and lines[-1].strip() == "```":
+        if (
+            lines
+            and lines[-1].strip() == "```"
+        ):
             lines = lines[:-1]
 
         text = "\n".join(lines).strip()
@@ -259,7 +269,10 @@ def parse_story(data):
 
             if (
                 isinstance(obj, dict)
-                and isinstance(obj.get("scenes"), list)
+                and isinstance(
+                    obj.get("scenes"),
+                    list,
+                )
             ):
                 return obj
 
@@ -275,7 +288,10 @@ def parse_story(data):
 
             if (
                 isinstance(obj, dict)
-                and isinstance(obj.get("scenes"), list)
+                and isinstance(
+                    obj.get("scenes"),
+                    list,
+                )
             ):
                 return obj
 
@@ -309,7 +325,7 @@ def normalize_story(story):
             "Story must contain exactly 6 scenes"
         )
 
-    types = [
+    scene_types = [
         "HOOK",
         "SETUP",
         "PROBLEM",
@@ -318,7 +334,9 @@ def normalize_story(story):
         "ENDING_CTA",
     ]
 
-    for index, scene in enumerate(scenes):
+    for index, scene in enumerate(
+        scenes
+    ):
 
         if not isinstance(scene, dict):
 
@@ -340,21 +358,28 @@ def normalize_story(story):
             )
         ).strip()
 
-        if not narration or not visual:
+        if not narration:
 
             raise ValueError(
-                f"Scene {index + 1} is missing "
-                "narration or visual"
+                f"Scene {index + 1} "
+                "has no narration"
             )
 
-        scene["type"] = types[index]
+        if not visual:
+
+            raise ValueError(
+                f"Scene {index + 1} "
+                "has no visual"
+            )
+
+        scene["type"] = scene_types[index]
 
         scene["narration"] = narration
 
         scene["visual"] = (
             visual
-            + " Keep the same rabbit character "
-            + "and blue scarf. "
+            + " Keep the same character appearance "
+            + "throughout all scenes. "
             + "Vertical cinematic composition. "
             + "No text, no letters, no logo, "
             + "no watermark."
@@ -391,11 +416,23 @@ def normalize_story(story):
             "story",
         ]
 
-    story["tags"] = [
+    tags = [
         str(tag).strip()
         for tag in tags
         if str(tag).strip()
-    ][:15]
+    ]
+
+    if not any(
+        tag.lower() == "shorts"
+        for tag in tags
+    ):
+
+        tags.insert(
+            0,
+            "shorts",
+        )
+
+    story["tags"] = tags[:15]
 
     return story
 
@@ -451,60 +488,48 @@ def save_story(story):
 
 def generate_story():
 
-    prompt = """
-Create a high-retention Hindi YouTube Shorts story.
-
-Return ONLY valid JSON.
-
-Use exactly 6 scenes:
-
-HOOK
-SETUP
-PROBLEM
-TENSION
-CLIMAX
-ENDING_CTA
-
-Requirements:
-
-- The first line must be a powerful curiosity hook.
-- Make viewers want to know what happens next.
-- Use a clear character and situation.
-- Introduce a problem.
-- Increase tension.
-- Give the story a real climax.
-- Give the story a satisfying ending.
-- Add a natural CTA only at the end.
-- Use spoken, natural Hindi.
-- Target 25-55 seconds total narration.
-- Do not add explanations outside JSON.
-
-Format:
-
-{
-  "title": "...",
-  "description": "...",
-  "tags": ["shorts", "hindi story"],
-  "scenes": [
-    {
-      "type": "HOOK",
-      "narration": "...",
-      "visual": "..."
-    }
-  ]
-}
-"""
+    prompt = (
+        "Create a high-retention Hindi YouTube Shorts story.\n"
+        "Return ONLY valid JSON.\n\n"
+        "Use exactly 6 scenes in this order:\n"
+        "HOOK, SETUP, PROBLEM, TENSION, CLIMAX, ENDING_CTA.\n\n"
+        "Requirements:\n"
+        "- Start with a powerful curiosity hook.\n"
+        "- Make viewers want to know what happens next.\n"
+        "- Use a clear character and situation.\n"
+        "- Introduce a real problem and increasing tension.\n"
+        "- Give the story a meaningful climax.\n"
+        "- Give the story a proper ending, not an abrupt stop.\n"
+        "- Put a short natural CTA only at the end.\n"
+        "- Use natural spoken Hindi.\n"
+        "- Target 25 to 55 seconds total narration.\n"
+        "- Do not put explanations outside the JSON.\n\n"
+        "JSON format:\n"
+        "{\n"
+        '  "title": "short title",\n'
+        '  "description": "short description",\n'
+        '  "tags": ["shorts", "hindi story"],\n'
+        '  "scenes": [\n'
+        '    {"type":"HOOK","narration":"Hindi narration","visual":"English visual prompt"},\n'
+        '    {"type":"SETUP","narration":"Hindi narration","visual":"English visual prompt"},\n'
+        '    {"type":"PROBLEM","narration":"Hindi narration","visual":"English visual prompt"},\n'
+        '    {"type":"TENSION","narration":"Hindi narration","visual":"English visual prompt"},\n'
+        '    {"type":"CLIMAX","narration":"Hindi narration","visual":"English visual prompt"},\n'
+        '    {"type":"ENDING_CTA","narration":"Hindi narration","visual":"English visual prompt"}\n'
+        "  ]\n"
+        "}"
+    )
 
     payload = {
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "You are an expert high-retention "
-                    "YouTube Shorts storyteller."
+                    "You are an expert YouTube Shorts "
+                    "storyteller. Write concise, emotional, "
+                    "high-retention stories."
                 ),
             },
-
             {
                 "role": "user",
                 "content": prompt,
@@ -545,13 +570,13 @@ Format:
                 )
 
                 print(
-                    "AI story generated."
+                    "AI story generated successfully."
                 )
 
                 return story
 
             print(
-                "Could not parse AI story."
+                "AI response could not be parsed."
             )
 
         except Exception as error:
@@ -718,9 +743,8 @@ def generate_images(story):
             try:
 
                 print(
-                    f"Generating image "
-                    f"{index}/6, "
-                    f"attempt {attempt + 1}"
+                    f"Generating image {index}/6 "
+                    f"(attempt {attempt + 1})"
                 )
 
                 response = requests.post(
@@ -737,6 +761,13 @@ def generate_images(story):
                     "Image HTTP:",
                     response.status_code,
                 )
+
+                if not response.ok:
+
+                    print(
+                        "Cloudflare response:",
+                        response.text[:1000],
+                    )
 
                 response.raise_for_status()
 
@@ -768,7 +799,7 @@ def generate_images(story):
                     image.verify()
 
                 print(
-                    "Saved:",
+                    "Saved image:",
                     output,
                 )
 
@@ -784,13 +815,13 @@ def generate_images(story):
                 )
 
                 if attempt == 0:
-
                     time.sleep(4)
 
         if not success:
 
             raise RuntimeError(
-                f"Failed to generate scene {index}"
+                f"Failed to generate image "
+                f"for scene {index}"
             )
 
 
@@ -798,7 +829,7 @@ def generate_images(story):
 # TEXT TO SPEECH
 # ============================================================
 
-async def generate_tts(
+async def create_tts(
     text,
     path,
 ):
@@ -832,7 +863,7 @@ def generate_audio(story):
         try:
 
             asyncio.run(
-                generate_tts(
+                create_tts(
                     scene["narration"],
                     output,
                 )
@@ -854,6 +885,11 @@ def generate_audio(story):
                 f"Invalid audio file: {output}"
             )
 
+        print(
+            "Saved audio:",
+            output,
+        )
+
 
 # ============================================================
 # AUDIO DURATION
@@ -861,104 +897,11 @@ def generate_audio(story):
 
 def get_duration(path):
 
-    result = command(
+    result = run_command(
         [
             "ffprobe",
             "-v",
             "error",
             "-show_entries",
             "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(path),
-        ]
-    )
-
-    seconds = float(
-        result.strip()
-    )
-
-    if seconds <= 0:
-
-        raise RuntimeError(
-            f"Invalid duration for {path}"
-        )
-
-    return seconds
-
-
-# ============================================================
-# ASS TIME
-# ============================================================
-
-def ass_time(seconds):
-
-    total = max(
-        1,
-        int(
-            round(
-                seconds * 100
-            )
-        ),
-    )
-
-    hours = total // 360000
-
-    minutes = (
-        total % 360000
-    ) // 6000
-
-    seconds_value = (
-        total % 6000
-    ) // 100
-
-    hundredths = (
-        total % 100
-    )
-
-    return (
-        f"{hours}:"
-        f"{minutes:02d}:"
-        f"{seconds_value:02d}."
-        f"{hundredths:02d}"
-    )
-
-
-# ============================================================
-# SUBTITLES
-# ============================================================
-
-def make_ass(
-    text,
-    seconds,
-    path,
-):
-
-    safe = (
-        text
-        .replace(
-            "\\",
-            "\\\\",
-        )
-        .replace(
-            "{",
-            "\\{",
-        )
-        .replace(
-            "}",
-            "\\}",
-        )
-        .replace(
-            "\n",
-            " ",
-        )
-    )
-
-    content = f"""[Script Info]
-ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Noto Sans Devanagari,62,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,5,2,2
+            
