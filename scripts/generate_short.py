@@ -13,6 +13,7 @@ from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parent.parent
+
 SCENES = ROOT / "scenes"
 AUDIO = ROOT / "audio"
 SEGMENTS = ROOT / "segments"
@@ -138,8 +139,7 @@ def fallback_story():
                 "visual": (
                     "The same brave white rabbit wearing a blue scarf, "
                     "helping a tiny bird reach a safe riverbank "
-                    "while water rushes around them, "
-                    "heroic cinematic moment."
+                    "while water rushes around them, heroic cinematic moment."
                 ),
             },
             {
@@ -164,9 +164,15 @@ def parse_story(value):
         if isinstance(value.get("scenes"), list):
             return value
 
-        for key in ("result", "response", "output"):
+        for key in (
+            "result",
+            "response",
+            "output",
+        ):
             if key in value:
-                found = parse_story(value[key])
+                found = parse_story(
+                    value[key]
+                )
 
                 if found:
                     return found
@@ -211,9 +217,16 @@ def parse_story(value):
 
 
 def normalize(story):
+    if not isinstance(story, dict):
+        raise ValueError(
+            "Story is not an object"
+        )
+
+    scenes = story.get("scenes")
+
     if (
-        not isinstance(story, dict)
-        or len(story.get("scenes", [])) != 6
+        not isinstance(scenes, list)
+        or len(scenes) != 6
     ):
         raise ValueError(
             "Story must contain exactly 6 scenes"
@@ -229,11 +242,12 @@ def normalize(story):
     ]
 
     for index, scene in enumerate(
-        story["scenes"]
+        scenes
     ):
         if not isinstance(scene, dict):
             raise ValueError(
-                "Invalid scene " + str(index + 1)
+                "Invalid scene "
+                + str(index + 1)
             )
 
         narration = str(
@@ -252,6 +266,7 @@ def normalize(story):
             )
 
         scene["type"] = types[index]
+
         scene["narration"] = narration
 
         scene["visual"] = (
@@ -261,26 +276,49 @@ def normalize(story):
             + "No text, no logo, no watermark."
         )
 
-    story.setdefault(
-        "title",
-        "एक कहानी जिसका अंत आपको चौंका देगा",
-    )
+    story["title"] = str(
+        story.get(
+            "title",
+            "एक कहानी जिसका अंत आपको चौंका देगा",
+        )
+    ).strip()
 
-    story.setdefault(
-        "description",
-        "एक छोटी कहानी जिसका अंत याद रहेगा। #Shorts",
-    )
+    story["description"] = str(
+        story.get(
+            "description",
+            "एक छोटी कहानी जिसका अंत याद रहेगा।",
+        )
+    ).strip()
 
-    story.setdefault(
+    tags = story.get(
         "tags",
-        ["shorts", "story", "hindi"],
+        [
+            "shorts",
+            "story",
+            "hindi",
+        ],
     )
+
+    if not isinstance(tags, list):
+        tags = [
+            "shorts",
+            "story",
+            "hindi",
+        ]
+
+    story["tags"] = [
+        str(tag).strip()
+        for tag in tags
+        if str(tag).strip()
+    ]
 
     return story
 
 
 def save_story(story):
-    (ROOT / "story.json").write_text(
+    (
+        ROOT / "story.json"
+    ).write_text(
         json.dumps(
             story,
             ensure_ascii=False,
@@ -299,7 +337,9 @@ def save_story(story):
         1,
     ):
         lines.append(
-            str(index) + ". " + scene["type"]
+            str(index)
+            + ". "
+            + scene["type"]
         )
 
         lines.append(
@@ -308,29 +348,31 @@ def save_story(story):
 
         lines.append("")
 
-    (ROOT / "story.txt").write_text(
+    (
+        ROOT / "story.txt"
+    ).write_text(
         "\n".join(lines),
         encoding="utf-8",
     )
 
 
 def generate_story():
-    prompt_lines = [
-        "Create a Hindi YouTube Shorts story.",
-        "Return ONLY valid JSON.",
-        "Return exactly 6 scenes in this order:",
-        "HOOK, SETUP, PROBLEM, TENSION, CLIMAX, ENDING_CTA.",
-        "The story must have a strong curiosity hook.",
-        "It must have a clear problem and rising tension.",
-        "It must have a real satisfying ending.",
-        "The final scene must contain a natural short CTA.",
-        "Use spoken Hindi.",
-        "Keep total narration suitable for a 25 to 55 second short.",
-        "JSON keys: title, description, tags, scenes.",
-        "Each scene needs type, narration, visual.",
-    ]
-
-    prompt = "\n".join(prompt_lines)
+    prompt = "\n".join(
+        [
+            "Create a Hindi YouTube Shorts story.",
+            "Return ONLY valid JSON.",
+            "Return exactly 6 scenes.",
+            "Scene order must be HOOK, SETUP, PROBLEM, TENSION, CLIMAX, ENDING_CTA.",
+            "The HOOK must create strong curiosity in the first sentence.",
+            "The story must have a clear problem and rising tension.",
+            "The CLIMAX must contain the main action.",
+            "The ENDING_CTA must give a satisfying ending and a short natural CTA.",
+            "Use spoken Hindi suitable for voice narration.",
+            "Keep the total story suitable for a 25 to 55 second Short.",
+            "Each scene needs type, narration, and visual.",
+            "Keys required: title, description, tags, scenes.",
+        ]
+    )
 
     payload = {
         "messages": [
@@ -338,7 +380,7 @@ def generate_story():
                 "role": "system",
                 "content": (
                     "You write high-retention "
-                    "YouTube Shorts stories."
+                    "Hindi YouTube Shorts stories."
                 ),
             },
             {
@@ -369,12 +411,22 @@ def generate_story():
             )
 
             if story:
-                story = normalize(story)
-                save_story(story)
+                story = normalize(
+                    story
+                )
+
+                save_story(
+                    story
+                )
+
+                print(
+                    "AI story created"
+                )
+
                 return story
 
             print(
-                "Story response was not valid JSON"
+                "AI returned no usable story"
             )
 
         except Exception as error:
@@ -386,14 +438,16 @@ def generate_story():
         if attempt < 2:
             time.sleep(3)
 
+    print(
+        "Using fallback story"
+    )
+
     story = normalize(
         fallback_story()
     )
 
-    save_story(story)
-
-    print(
-        "Using fallback story"
+    save_story(
+        story
     )
 
     return story
@@ -438,7 +492,9 @@ def decode_image(value):
 
     if isinstance(value, list):
         for item in value:
-            result = decode_image(item)
+            result = decode_image(
+                item
+            )
 
             if result:
                 return result
@@ -452,7 +508,9 @@ def response_image_bytes(response):
         "",
     ).lower()
 
-    if content_type.startswith("image/"):
+    if content_type.startswith(
+        "image/"
+    ):
         return response.content
 
     try:
@@ -462,7 +520,9 @@ def response_image_bytes(response):
         data = None
 
     if data is not None:
-        result = decode_image(data)
+        result = decode_image(
+            data
+        )
 
         if result:
             return result
@@ -474,8 +534,8 @@ def response_image_bytes(response):
     if result:
         return result
 
-    raise ValueError(
-        "Cloudflare did not return an image"
+    raise RuntimeError(
+        "Cloudflare did not return a usable image"
     )
 
 
@@ -486,16 +546,24 @@ def generate_images(story):
     ):
         output = (
             SCENES
-            / ("scene_" + str(index) + ".png")
+            / (
+                "scene_"
+                + str(index)
+                + ".png"
+            )
         )
 
         for attempt in range(2):
             try:
                 response = requests.post(
-                    cf_url(IMAGE_MODEL),
+                    cf_url(
+                        IMAGE_MODEL
+                    ),
                     headers=HEADERS,
                     json={
-                        "prompt": scene["visual"],
+                        "prompt": scene[
+                            "visual"
+                        ],
                         "steps": 4,
                     },
                     timeout=180,
@@ -538,7 +606,11 @@ def generate_images(story):
 
             except Exception as error:
                 print(
-                    "Image failed:",
+                    "Image",
+                    index,
+                    "attempt",
+                    attempt + 1,
+                    "failed:",
                     error,
                 )
 
@@ -548,7 +620,10 @@ def generate_images(story):
                 time.sleep(4)
 
 
-async def create_tts(text, path):
+async def create_tts(
+    text,
+    path,
+):
     communicator = edge_tts.Communicate(
         text,
         VOICE,
@@ -566,7 +641,11 @@ def generate_audio(story):
     ):
         output = (
             AUDIO
-            / ("scene_" + str(index) + ".mp3")
+            / (
+                "scene_"
+                + str(index)
+                + ".mp3"
+            )
         )
 
         print(
@@ -654,13 +733,28 @@ def ass_time(seconds):
     )
 
 
-def make_ass(text, seconds, path):
+def make_ass(
+    text,
+    seconds,
+    path,
+):
     safe = (
-        text
-        .replace("\\", "\\\\")
-        .replace("{", "\\{")
-        .replace("}", "\\}")
-        .replace("\n", " ")
+        text.replace(
+            "\\",
+            "\\\\",
+        )
+        .replace(
+            "{",
+            "\\{",
+        )
+        .replace(
+            "}",
+            "\\}",
+        )
+        .replace(
+            "\n",
+            " ",
+        )
     )
 
     ass_lines = [
@@ -698,30 +792,52 @@ def make_ass(text, seconds, path):
     ]
 
     path.write_text(
-        "\n".join(ass_lines) + "\n",
+        "\n".join(
+            ass_lines
+        )
+        + "\n",
         encoding="utf-8",
     )
 
 
-def make_segment(index, narration):
+def make_segment(
+    index,
+    narration,
+):
     image = (
         SCENES
-        / ("scene_" + str(index) + ".png")
+        / (
+            "scene_"
+            + str(index)
+            + ".png"
+        )
     )
 
     audio = (
         AUDIO
-        / ("scene_" + str(index) + ".mp3")
+        / (
+            "scene_"
+            + str(index)
+            + ".mp3"
+        )
     )
 
     ass = (
         SEGMENTS
-        / ("scene_" + str(index) + ".ass")
+        / (
+            "scene_"
+            + str(index)
+            + ".ass"
+        )
     )
 
     output = (
         SEGMENTS
-        / ("segment_" + str(index) + ".mp4")
+        / (
+            "segment_"
+            + str(index)
+            + ".mp4"
+        )
     )
 
     seconds = duration(
@@ -734,14 +850,6 @@ def make_segment(index, narration):
         ass,
     )
 
-    ass_path = (
-        ass.as_posix()
-        .replace(
-            ":",
-            r"\:",
-        )
-    )
-
     video_filter = (
         "[0:v]"
         "scale=1080:1920:"
@@ -750,7 +858,7 @@ def make_segment(index, narration):
         "(ow-iw)/2:"
         "(oh-ih)/2,"
         "subtitles="
-        + ass_path
+        + ass.as_posix()
         + "[v]"
     )
 
@@ -822,229 +930,15 @@ def join_segments():
 
     lines = []
 
-    for index in range(1, 7):
+    for index in range(
+        1,
+        7,
+    ):
         path = (
             SEGMENTS
-            / ("segment_" + str(index) + ".mp4")
-        )
-
-        if not path.exists():
-            raise FileNotFoundError(
-                str(path)
+            / (
+                "segment_"
+                + str(index)
+                + ".mp4"
             )
-
-        lines.append(
-            "file '"
-            + path.resolve().as_posix()
-            + "'"
-        )
-
-    concat.write_text(
-        "\n".join(lines) + "\n",
-        encoding="utf-8",
-    )
-
-    run(
-        [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(concat),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-crf",
-            "22",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            "-movflags",
-            "+faststart",
-            str(final),
-        ]
-    )
-
-
-def verify():
-    video = (
-        OUTPUT
-        / "final_short.mp4"
-    )
-
-    data = json.loads(
-        run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_streams",
-                "-show_format",
-                "-of",
-                "json",
-                str(video),
-            ]
-        )
-    )
-
-    streams = data.get(
-        "streams",
-        [],
-    )
-
-    video_stream = next(
-        (
-            item
-            for item in streams
-            if item.get("codec_type") == "video"
-        ),
-        None,
-    )
-
-    audio_stream = next(
-        (
-            item
-            for item in streams
-            if item.get("codec_type") == "audio"
-        ),
-        None,
-    )
-
-      if not video_stream or not audio_stream:
-        raise RuntimeError(
-            "Video or audio stream missing"
-        )
-
-    width = int(
-        video_stream.get(
-            "width",
-            0,
-        )
-    )
-
-    height = int(
-        video_stream.get(
-            "height",
-            0,
-        )
-    )
-
-    if width != 1080 or height != 1920:
-        raise RuntimeError(
-            "Wrong video resolution: "
-            + str(width)
-            + "x"
-            + str(height)
-        )
-
-    total = float(
-        data["format"].get(
-            "duration",
-            0,
-        )
-    )
-
-    if not 18 <= total <= 60:
-        raise RuntimeError(
-            "Video duration is %.2fs; expected 18-60s"
-            % total
-        )
-
-    if (
-        video_stream.get("codec_name")
-        != "h264"
-    ):
-        raise RuntimeError(
-            "Video is not H.264"
-        )
-
-    if (
-        audio_stream.get("codec_name")
-        != "aac"
-    ):
-        raise RuntimeError(
-            "Audio is not AAC"
-        )
-
-    print(
-        "Video verification passed"
-    )
-
-    print(
-        "Resolution:",
-        str(width) + "x" + str(height),
-    )
-
-    print(
-        "Duration:",
-        "%.2f seconds" % total,
-    )
-
-    print(
-        "Video codec:",
-        video_stream.get("codec_name"),
-    )
-
-    print(
-        "Audio codec:",
-        audio_stream.get("codec_name"),
-    )
-
-
-def main():
-    print(
-        "Starting AI YouTube Short generation"
-    )
-
-    story = generate_story()
-
-    print(
-        "Generating images"
-    )
-
-    generate_images(
-        story
-    )
-
-    print(
-        "Generating voice"
-    )
-
-    generate_audio(
-        story
-    )
-
-    print(
-        "Creating video segments"
-    )
-
-    create_segments(
-        story
-    )
-
-    print(
-        "Joining segments"
-    )
-
-    join_segments()
-
-    print(
-        "Verifying final video"
-    )
-
-    verify()
-
-    print(
-        "Short generated successfully"
-    )
-
-
-if __name__ == "__main__":
-    main()
+     
