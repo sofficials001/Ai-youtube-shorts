@@ -947,4 +947,26 @@ def verify():
     ):
         raise RuntimeError(
             "Video is not H.264"
+
+                if (
+        video_stream.get("codec_name")
+        != "h264"
+    ):
+        raise RuntimeError(
+            "Video is not H.264"
+        )
+        
+    print("Video verification passed!")
+
+
+if __name__ == "__main__":
+    print("Starting generation...")
+    story_data = generate_story()
+    generate_images(story_data)
+    generate_audio(story_data)
+    create_segments(story_data)
+    join()
+    verify()
+    print("Short generated successfully!")
+    
      
