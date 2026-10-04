@@ -17,10 +17,6 @@ import requests
 from PIL import Image
 
 
-# ============================================================
-# PATHS
-# ============================================================
-
 ROOT = Path(__file__).resolve().parent.parent
 
 SCENES_DIR = ROOT / "scenes"
@@ -31,51 +27,38 @@ OUTPUT_DIR = ROOT / "output"
 STORY_JSON = ROOT / "story.json"
 STORY_TXT = ROOT / "story.txt"
 
-for folder in [
-    SCENES_DIR,
-    AUDIO_DIR,
-    SEGMENTS_DIR,
-    OUTPUT_DIR,
-]:
+for folder in (SCENES_DIR, AUDIO_DIR, SEGMENTS_DIR, OUTPUT_DIR):
     folder.mkdir(parents=True, exist_ok=True)
 
 
 # ============================================================
-# CLOUDFLARE SETTINGS
+# CLOUDFLARE
 # ============================================================
 
-CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN")
-CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID")
+CF_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN")
+CF_ACCOUNT = os.getenv("CLOUDFLARE_ACCOUNT_ID")
 
-if not CLOUDFLARE_API_TOKEN:
-    raise RuntimeError("CLOUDFLARE_API_TOKEN is missing.")
-
-if not CLOUDFLARE_ACCOUNT_ID:
-    raise RuntimeError("CLOUDFLARE_ACCOUNT_ID is missing.")
-
+if not CF_TOKEN or not CF_ACCOUNT:
+    raise RuntimeError(
+        "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are required."
+    )
 
 LLM_MODEL = "@cf/meta/llama-3.2-3b-instruct"
 IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell"
-
 VOICE = "hi-IN-SwaraNeural"
 
-CF_HEADERS = {
-    "Authorization": f"Bearer {CLOUDFLARE_API_TOKEN}",
+HEADERS = {
+    "Authorization": f"Bearer {CF_TOKEN}",
     "Content-Type": "application/json",
 }
 
 
-# ============================================================
-# STORY THEMES
-# ============================================================
-
 THEMES = [
     "an emotional rabbit story with a surprising ending",
-    "a mysterious rabbit story with a powerful hook",
-    "a suspenseful bird story with an emotional payoff",
-    "a short animal friendship story with a twist",
-    "an inspirational animal story where a small character solves a big problem",
-    "a mysterious forest animal story that keeps viewers curious until the ending",
+    "a mysterious animal story with a strong twist",
+    "a suspenseful bird rescue story with an emotional payoff",
+    "a friendship story between two small forest animals",
+    "an inspirational animal story where a small hero solves a big problem",
 ]
 
 
@@ -83,10 +66,10 @@ THEMES = [
 # CLOUDFLARE URL
 # ============================================================
 
-def cloudflare_url(model):
+def cf_url(model):
     return (
-        f"https://api.cloudflare.com/client/v4/accounts/"
-        f"{CLOUDFLARE_ACCOUNT_ID}/ai/run/{model}"
+        "https://api.cloudflare.com/client/v4/accounts/"
+        f"{CF_ACCOUNT}/ai/run/{model}"
     )
 
 
@@ -94,24 +77,24 @@ def cloudflare_url(model):
 # COMMAND RUNNER
 # ============================================================
 
-def run_command(command):
-    print("Running:", " ".join(command))
-
+def run_cmd(args, capture=True):
     result = subprocess.run(
-        command,
+        args,
         cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
         text=True,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.STDOUT if capture else None,
     )
 
     if result.returncode != 0:
-        print(result.stdout)
+        if capture:
+            print(result.stdout)
+
         raise RuntimeError(
-            f"Command failed with exit code {result.returncode}"
+            f"Command failed: {' '.join(args)}"
         )
 
-    return result.stdout
+    return result.stdout if capture else ""
 
 
 # ============================================================
@@ -129,46 +112,46 @@ def fallback_story():
             "shorts",
             "hindi story",
             "rabbit",
-            "emotional story",
             "animal story",
+            "emotional story",
         ],
         "scenes": [
             {
                 "type": "HOOK",
                 "narration": (
-                    "रुको... इस छोटे से खरगोश ने अपनी जान बचाने के बजाय "
+                    "रुको... इस छोटे खरगोश ने अपनी जान बचाने के बजाय "
                     "किसी और को बचाना क्यों चुना?"
                 ),
                 "visual": (
                     "A small cute white rabbit wearing a blue scarf "
-                    "standing alone in a dark forest at dusk, looking toward "
-                    "a mysterious light, cinematic close-up, emotional eyes, "
+                    "standing alone in a dark forest at dusk, looking "
+                    "toward a mysterious light, cinematic close-up, "
                     "dramatic lighting, vertical composition"
                 ),
             },
             {
                 "type": "SETUP",
                 "narration": (
-                    "हर शाम वह खरगोश जंगल के किनारे एक पुराने पेड़ के पास "
-                    "जाता था, जहाँ उसे हमेशा किसी की आवाज़ सुनाई देती थी।"
+                    "हर शाम वह खरगोश जंगल के किनारे एक पुराने पेड़ के "
+                    "पास जाता था, जहाँ उसे हमेशा किसी की आवाज़ सुनाई देती थी।"
                 ),
                 "visual": (
-                    "The same small white rabbit wearing the same blue scarf "
-                    "walking beside an old tree at the forest edge during "
-                    "sunset, curious expression, cinematic storytelling, "
-                    "warm light, vertical composition"
+                    "The same small white rabbit wearing the same blue "
+                    "scarf walking beside an old tree at the forest edge "
+                    "during sunset, curious expression, cinematic "
+                    "storytelling, warm light, vertical composition"
                 ),
             },
             {
                 "type": "PROBLEM",
                 "narration": (
-                    "लेकिन एक दिन अचानक तेज़ बारिश शुरू हुई और पास की "
-                    "छोटी नदी का पानी तेजी से बढ़ने लगा।"
+                    "लेकिन एक दिन तेज़ बारिश शुरू हुई और पास की छोटी "
+                    "नदी का पानी तेजी से बढ़ने लगा।"
                 ),
                 "visual": (
-                    "The same small white rabbit wearing the same blue scarf "
-                    "watching a rapidly rising stream during heavy rain, "
-                    "worried expression, wet forest, dramatic storm, "
+                    "The same small white rabbit wearing the same blue "
+                    "scarf watching a rapidly rising stream during heavy "
+                    "rain, worried expression, wet forest, dramatic storm, "
                     "cinematic vertical composition"
                 ),
             },
@@ -179,8 +162,8 @@ def fallback_story():
                     "वह पानी के बीच फँसी हुई थी।"
                 ),
                 "visual": (
-                    "The same white rabbit wearing the same blue scarf "
-                    "discovering a tiny frightened bird trapped near "
+                    "The same small white rabbit wearing the same blue "
+                    "scarf discovering a tiny frightened bird trapped near "
                     "rushing water and branches, intense rain, emotional "
                     "cinematic scene, vertical composition"
                 ),
@@ -192,10 +175,10 @@ def fallback_story():
                     "चिड़िया को सुरक्षित किनारे तक ले आया।"
                 ),
                 "visual": (
-                    "The same brave white rabbit wearing the same blue scarf "
-                    "carefully helping a tiny bird reach a safe riverbank "
-                    "while water rushes around them, heroic emotional moment, "
-                    "cinematic lighting, vertical composition"
+                    "The same brave white rabbit wearing the same blue "
+                    "scarf carefully helping a tiny bird reach a safe "
+                    "riverbank while water rushes around them, heroic "
+                    "emotional moment, cinematic lighting, vertical composition"
                 ),
             },
             {
@@ -217,23 +200,23 @@ def fallback_story():
 
 
 # ============================================================
-# PARSE AI STORY
+# STORY PARSER
 # ============================================================
 
-def extract_story_object(value):
+def parse_story(value):
     if isinstance(value, dict):
 
-        if "scenes" in value:
+        if isinstance(value.get("scenes"), list):
             return value
 
-        for key in [
+        for key in (
             "result",
             "response",
             "output",
             "data",
-        ]:
+        ):
             if key in value:
-                found = extract_story_object(value[key])
+                found = parse_story(value[key])
 
                 if found:
                     return found
@@ -245,62 +228,79 @@ def extract_story_object(value):
 
     text = value.strip()
 
-    candidates = [
+    candidates = [text]
+
+    cleaned = re.sub(
+        r"^```(?:json|python)?\s*",
+        "",
         text,
-        re.sub(
-            r"^```(?:json|python)?\s*",
-            "",
-            text,
-            flags=re.IGNORECASE,
-        ).strip().rstrip("`").strip(),
-    ]
+        flags=re.IGNORECASE,
+    ).strip()
+
+    cleaned = cleaned.rstrip("`").strip()
+
+    if cleaned not in candidates:
+        candidates.append(cleaned)
 
     start = text.find("{")
     end = text.rfind("}")
 
     if start >= 0 and end > start:
-        candidates.append(text[start:end + 1])
+        candidates.append(
+            text[start:end + 1]
+        )
 
     for candidate in candidates:
 
         try:
-            parsed = json.loads(candidate)
+            obj = json.loads(candidate)
 
-            if isinstance(parsed, dict) and "scenes" in parsed:
-                return parsed
+            if (
+                isinstance(obj, dict)
+                and isinstance(obj.get("scenes"), list)
+            ):
+                return obj
 
-        except (json.JSONDecodeError, TypeError):
+        except (
+            json.JSONDecodeError,
+            TypeError,
+        ):
             pass
 
         try:
-            parsed = ast.literal_eval(candidate)
+            obj = ast.literal_eval(candidate)
 
-            if isinstance(parsed, dict) and "scenes" in parsed:
-                return parsed
+            if (
+                isinstance(obj, dict)
+                and isinstance(obj.get("scenes"), list)
+            ):
+                return obj
 
-        except (ValueError, SyntaxError, TypeError):
+        except (
+            ValueError,
+            SyntaxError,
+            TypeError,
+        ):
             pass
 
     return None
 
 
 # ============================================================
-# STORY VALIDATION
+# STORY NORMALIZATION
 # ============================================================
 
-def improve_story_structure(story):
+def normalize_story(story):
 
-    scenes = story.get("scenes")
-
-    if not isinstance(scenes, list):
-        raise ValueError("Story does not contain a scenes list.")
-
-    if len(scenes) != 6:
+    if (
+        not isinstance(story, dict)
+        or len(story.get("scenes", [])) != 6
+    ):
         raise ValueError(
-            f"Expected exactly 6 scenes, got {len(scenes)}."
+            "Story must contain exactly 6 scenes."
         )
 
-    scene_types = [
+    types = [
         "HOOK",
         "SETUP",
         "PROBLEM",
@@ -309,14 +309,14 @@ def improve_story_structure(story):
         "ENDING_CTA",
     ]
 
-    for index, scene in enumerate(scenes):
+    for index, scene in enumerate(
+        story["scenes"]
+    ):
 
         if not isinstance(scene, dict):
             raise ValueError(
-                f"Scene {index + 1} is not a valid object."
+                f"Scene {index + 1} is invalid."
             )
-
-        scene["type"] = scene_types[index]
 
         narration = str(
             scene.get("narration", "")
@@ -326,81 +326,60 @@ def improve_story_structure(story):
             scene.get("visual", "")
         ).strip()
 
-        if not narration:
+        if not narration or not visual:
             raise ValueError(
-                f"Scene {index + 1} has no narration."
+                f"Scene {index + 1} is missing narration or visual."
             )
 
-        if not visual:
-            raise ValueError(
-                f"Scene {index + 1} has no visual prompt."
-            )
-
+        scene["type"] = types[index]
         scene["narration"] = narration
-        scene["visual"] = visual
 
-    hook = scenes[0]["narration"]
-
-    if not re.search(
-        r"अगर|रुको|लेकिन|क्या|सोचिए|यकीन|देखिए",
-        hook,
-        flags=re.IGNORECASE,
-    ):
-        scenes[0]["narration"] = (
-            "रुको... " + hook
+        scene["visual"] = (
+            visual
+            + " Keep the same small cute white rabbit "
+            + "with white fur and a blue scarf. "
+            + "No text, letters, logo, or watermark."
         )
 
-    ending = scenes[-1]["narration"]
+    if not re.search(
+        r"रुको|लेकिन|क्या|सोचिए|देखिए|यकीन",
+        story["scenes"][0]["narration"],
+        re.IGNORECASE,
+    ):
+        story["scenes"][0]["narration"] = (
+            "रुको... "
+            + story["scenes"][0]["narration"]
+        )
 
     if not re.search(
         r"फॉलो|follow|सब्सक्राइब|subscribe",
-        ending,
-        flags=re.IGNORECASE,
+        story["scenes"][-1]["narration"],
+        re.IGNORECASE,
     ):
-        scenes[-1]["narration"] = (
-            ending + " ऐसी कहानी पसंद आए तो फॉलो कर देना।"
+        story["scenes"][-1]["narration"] += (
+            " ऐसी कहानी पसंद आए तो फॉलो कर देना।"
         )
 
-    story["scenes"] = scenes
+    story.setdefault(
+        "title",
+        "एक कहानी जिसका अंत आपको चौंका देगा",
+    )
 
-    if not story.get("title"):
-        story["title"] = "एक कहानी जिसका अंत आपको चौंका देगा"
+    story.setdefault(
+        "description",
+        "एक छोटी कहानी जिसका अंत याद रह जाएगा। #Shorts",
+    )
 
-    if not story.get("description"):
-        story["description"] = (
-            "एक छोटी कहानी जिसका अंत याद रह जाएगा। #Shorts"
-        )
-
-    if not story.get("tags"):
-        story["tags"] = [
+    story.setdefault(
+        "tags",
+        [
             "shorts",
             "story",
             "hindi",
-        ]
-
-    return story
-
-
-# ============================================================
-# VISUAL CONSISTENCY
-# ============================================================
-
-def prepare_visual_prompts(story):
-
-    consistency = (
-        " Keep the exact same main character design in every scene: "
-        "a small cute white rabbit with soft white fur and a blue scarf. "
-        "No text, no letters, no subtitles, no logos, no watermark."
+        ],
     )
 
-    for scene in story["scenes"]:
-
-        visual = scene["visual"].strip()
-
-        if consistency not in visual:
-            visual += consistency
-
-        scene["visual"] = visual
+    return story
 
 
 # ============================================================
@@ -409,20 +388,16 @@ def prepare_visual_prompts(story):
 
 def save_story(story):
 
-    with open(
-        STORY_JSON,
-        "w",
-        encoding="utf-8",
-    ) as file:
-        json.dump(
+    STORY_JSON.write_text(
+        json.dumps(
             story,
-            file,
             ensure_ascii=False,
             indent=2,
-        )
+        ),
+        encoding="utf-8",
+    )
 
-    with open(
-        STORY_TXT,
+    with STORY_TXT.open(
         "w",
         encoding="utf-8",
     ) as file:
@@ -433,7 +408,7 @@ def save_story(story):
 
         for number, scene in enumerate(
             story["scenes"],
-            start=1,
+            1,
         ):
             file.write(
                 f"{number}. {scene['type']}\n"
@@ -450,37 +425,40 @@ def save_story(story):
 
 def generate_story():
 
-    theme = random.choice(THEMES)
+    theme = random.choice(
+        THEMES
+    )
 
     prompt = f"""
-Create a highly engaging Hindi YouTube Shorts story.
+Create a highly engaging Hindi YouTube Shorts story about:
 
-Theme:
 {theme}
 
-STRICT REQUIREMENTS:
+Requirements:
 
-1. Exactly 6 scenes.
-2. Scene 1 must be a powerful HOOK.
-3. Scene 2 must establish the situation.
-4. Scene 3 must introduce the main problem.
-5. Scene 4 must increase tension.
-6. Scene 5 must contain the climax/payoff.
-7. Scene 6 must contain a real ending plus a short natural CTA.
-8. The story must actually finish.
-9. Do not leave the ending unfinished.
-10. Keep the narration suitable for a 25-55 second short.
-11. Use spoken Hindi.
-12. Use one consistent animal character.
-13. Visual prompts must be cinematic.
-14. No text inside generated images.
-15. Return ONLY valid JSON.
+- Exactly 6 scenes.
+- Scene 1 = powerful HOOK.
+- Scene 2 = SETUP.
+- Scene 3 = PROBLEM.
+- Scene 4 = TENSION.
+- Scene 5 = CLIMAX.
+- Scene 6 = ENDING_CTA.
+- The story must have a real ending.
+- Do not leave the story unfinished.
+- Use spoken Hindi.
+- Suitable for a 25-55 second YouTube Short.
+- Scene 1 must create curiosity.
+- Scene 6 must have a natural short CTA.
+- Use one consistent animal character.
+- Visual prompts should be cinematic.
+- No text inside images.
+- Return ONLY valid JSON.
 
-Required JSON:
+Format:
 
 {{
-  "title": "Hindi title",
-  "description": "short description",
+  "title": "...",
+  "description": "...",
   "tags": ["shorts", "story", "hindi"],
   "scenes": [
     {{
@@ -522,8 +500,8 @@ Required JSON:
             {
                 "role": "system",
                 "content": (
-                    "You are a professional YouTube Shorts "
-                    "story writer focused on viewer retention."
+                    "You write high-retention "
+                    "YouTube Shorts stories."
                 ),
             },
             {
@@ -538,53 +516,40 @@ Required JSON:
         try:
 
             print(
-                f"Generating story "
-                f"(attempt {attempt}/3)..."
+                f"Generating story, attempt "
+                f"{attempt}/3"
             )
 
             response = requests.post(
-                cloudflare_url(LLM_MODEL),
-                headers=CF_HEADERS,
+                cf_url(LLM_MODEL),
+                headers=HEADERS,
                 json=payload,
                 timeout=120,
             )
 
             print(
-                "Cloudflare story HTTP status:",
+                "Story HTTP:",
                 response.status_code,
             )
 
             response.raise_for_status()
 
-            data = response.json()
-
-            story = extract_story_object(data)
+            story = parse_story(
+                response.json()
+            )
 
             if story is None:
-                print(
-                    "Could not parse Cloudflare story."
-                )
-
-                print(
-                    str(data)[:3000]
-                )
-
                 raise ValueError(
-                    "No valid story object found."
+                    "Could not parse a valid story "
+                    "from Cloudflare."
                 )
 
-            story = improve_story_structure(
+            story = normalize_story(
                 story
             )
 
-            prepare_visual_prompts(
+            save_story(
                 story
-            )
-
-            save_story(story)
-
-            print(
-                "Story generated successfully."
             )
 
             return story
@@ -592,7 +557,7 @@ Required JSON:
         except Exception as error:
 
             print(
-                "Story generation failed:",
+                "Story attempt failed:",
                 error,
             )
 
@@ -600,17 +565,11 @@ Required JSON:
                 time.sleep(3)
 
     print(
-        "Cloudflare story generation failed."
-    )
-
-    print(
         "Using fallback story."
     )
 
-    story = fallback_story()
-
-    prepare_visual_prompts(
-        story
+    story = normalize_story(
+        fallback_story()
     )
 
     save_story(
@@ -621,24 +580,23 @@ Required JSON:
 
 
 # ============================================================
-# IMAGE RESPONSE DECODER
+# IMAGE DECODER
 # ============================================================
 
-def decode_image_value(value):
+def decode_image(value):
 
     if isinstance(value, str):
 
         value = value.strip()
 
-        if value.startswith(
-            "data:image"
+        if (
+            value.startswith("data:image")
+            and "," in value
         ):
-
-            if "," in value:
-                value = value.split(
-                    ",",
-                    1,
-                )[1]
+            value = value.split(
+                ",",
+                1,
+            )[1]
 
         try:
             return base64.b64decode(
@@ -650,37 +608,37 @@ def decode_image_value(value):
 
     if isinstance(value, dict):
 
-        for key in [
+        for key in (
             "image",
             "b64_json",
             "data",
             "result",
-        ]:
+        ):
 
             if key in value:
 
-                decoded = decode_image_value(
+                result = decode_image(
                     value[key]
                 )
 
-                if decoded:
-                    return decoded
+                if result:
+                    return result
 
     if isinstance(value, list):
 
         for item in value:
 
-            decoded = decode_image_value(
+            result = decode_image(
                 item
             )
 
-            if decoded:
-                return decoded
+            if result:
+                return result
 
     return None
 
 
-def extract_image_bytes(response):
+def get_image_bytes(response):
 
     content_type = (
         response.headers
@@ -691,52 +649,37 @@ def extract_image_bytes(response):
         .lower()
     )
 
-    if "image/" in content_type:
+    if content_type.startswith(
+        "image/"
+    ):
         return response.content
 
     try:
         data = response.json()
+
     except ValueError:
         data = None
 
     if data is not None:
 
-        decoded = decode_image_value(
+        result = decode_image(
             data
         )
 
-        if decoded:
-            return decoded
+        if result:
+            return result
 
-    text = response.text.strip()
-
-    decoded = decode_image_value(
-        text
+    result = decode_image(
+        response.text
     )
 
-    if decoded:
-        return decoded
+    if result:
+        return result
 
     raise ValueError(
-        "Cloudflare did not return a usable image."
+        "Cloudflare did not return "
+        "a usable image."
     )
-
-
-# ============================================================
-# IMAGE VALIDATION
-# ============================================================
-
-def validate_image(path):
-
-    with Image.open(path) as image:
-        image.verify()
-
-    with Image.open(path) as image:
-        rgb = image.convert("RGB")
-        rgb.save(
-            path,
-            format="PNG",
-        )
 
 
 # ============================================================
@@ -747,15 +690,13 @@ def generate_images(story):
 
     for number, scene in enumerate(
         story["scenes"],
-        start=1,
+        1,
     ):
 
-        output_path = (
-            SCENES_DIR /
-            f"scene_{number}.png"
+        output = (
+            SCENES_DIR
+            / f"scene_{number}.png"
         )
-
-        success = False
 
         for attempt in range(1, 3):
 
@@ -763,8 +704,8 @@ def generate_images(story):
 
                 print(
                     f"Generating image "
-                    f"{number}/6 "
-                    f"(attempt {attempt}/2)..."
+                    f"{number}/6, "
+                    f"attempt {attempt}/2"
                 )
 
                 payload = {
@@ -773,59 +714,160 @@ def generate_images(story):
                 }
 
                 response = requests.post(
-                    cloudflare_url(
-                        IMAGE_MODEL
-                    ),
-                    headers=CF_HEADERS,
+                    cf_url(IMAGE_MODEL),
+                    headers=HEADERS,
                     json=payload,
                     timeout=180,
                 )
 
                 print(
-                    "Image HTTP status:",
+                    "Image HTTP:",
                     response.status_code,
                 )
 
                 response.raise_for_status()
 
-                image_bytes = extract_image_bytes(
+                raw = get_image_bytes(
                     response
                 )
 
                 with Image.open(
-                    BytesIO(image_bytes)
+                    BytesIO(raw)
                 ) as image:
 
-                    image = image.convert(
+                    image.convert(
                         "RGB"
+                    ).save(
+                        output,
+                        "PNG",
                     )
 
-                    image.save(
-                        output_path,
-                        format="PNG",
-                    )
+                with Image.open(
+                    output
+                ) as image:
 
-                validate_image(
-                    output_path
-                )
+                    image.verify()
 
                 print(
-                    f"Saved {output_path}"
+                    "Saved",
+                    output,
                 )
 
-                success = True
                 break
 
             except Exception as error:
 
                 print(
-                    f"Image {number} failed:",
+                    "Image failed:",
                     error,
                 )
 
-                if attempt < 2:
-                    time.sleep(4)
+                if attempt == 2:
 
-        if not success:
+                    raise RuntimeError(
+                        f"Could not generate "
+                        f"image {number}: "
+                        f"{error}"
+                    ) from error
+
+                time.sleep(4)
+
+
+# ============================================================
+# TEXT TO SPEECH
+# ============================================================
+
+async def save_tts(
+    text,
+    path,
+):
+
+    communicator = edge_tts.Communicate(
+        text,
+        VOICE,
+    )
+
+    await communicator.save(
+        str(path)
+    )
+
+
+def generate_audio(story):
+
+    for number, scene in enumerate(
+        story["scenes"],
+        1,
+    ):
+
+        output = (
+            AUDIO_DIR
+            / f"scene_{number}.mp3"
+        )
+
+        print(
+            f"Generating voice {number}/6"
+        )
+
+        try:
+
+            asyncio.run(
+                save_tts(
+                    scene["narration"],
+                    output,
+                )
+            )
+
+        except Exception as error:
 
             raise RuntimeError(
+                f"TTS failed for scene "
+                f"{number}: {error}"
+            ) from error
+
+        if (
+            not output.exists()
+            or output.stat().st_size < 1000
+        ):
+
+            raise RuntimeError(
+                f"Invalid audio file: "
+                f"{output}"
+            )
+
+
+# ============================================================
+# AUDIO DURATION
+# ============================================================
+
+def get_duration(path):
+
+    output = run_cmd(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ]
+    )
+
+    value = float(
+        output.strip()
+    )
+
+    if value <= 0:
+        raise RuntimeError(
+            f"Invalid duration: {path}"
+        )
+
+    return value
+
+
+# ============================================================
+# ASS SUBTITLES
+# ============================================================
+
+def ass_time(s
