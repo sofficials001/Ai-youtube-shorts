@@ -917,6 +917,134 @@ def verify():
         None,
     )
 
-    if not video_stream or not audio_stream:
+      if not video_stream or not audio_stream:
         raise RuntimeError(
-            "Vi
+            "Video or audio stream missing"
+        )
+
+    width = int(
+        video_stream.get(
+            "width",
+            0,
+        )
+    )
+
+    height = int(
+        video_stream.get(
+            "height",
+            0,
+        )
+    )
+
+    if width != 1080 or height != 1920:
+        raise RuntimeError(
+            "Wrong video resolution: "
+            + str(width)
+            + "x"
+            + str(height)
+        )
+
+    total = float(
+        data["format"].get(
+            "duration",
+            0,
+        )
+    )
+
+    if not 18 <= total <= 60:
+        raise RuntimeError(
+            "Video duration is %.2fs; expected 18-60s"
+            % total
+        )
+
+    if (
+        video_stream.get("codec_name")
+        != "h264"
+    ):
+        raise RuntimeError(
+            "Video is not H.264"
+        )
+
+    if (
+        audio_stream.get("codec_name")
+        != "aac"
+    ):
+        raise RuntimeError(
+            "Audio is not AAC"
+        )
+
+    print(
+        "Video verification passed"
+    )
+
+    print(
+        "Resolution:",
+        str(width) + "x" + str(height),
+    )
+
+    print(
+        "Duration:",
+        "%.2f seconds" % total,
+    )
+
+    print(
+        "Video codec:",
+        video_stream.get("codec_name"),
+    )
+
+    print(
+        "Audio codec:",
+        audio_stream.get("codec_name"),
+    )
+
+
+def main():
+    print(
+        "Starting AI YouTube Short generation"
+    )
+
+    story = generate_story()
+
+    print(
+        "Generating images"
+    )
+
+    generate_images(
+        story
+    )
+
+    print(
+        "Generating voice"
+    )
+
+    generate_audio(
+        story
+    )
+
+    print(
+        "Creating video segments"
+    )
+
+    create_segments(
+        story
+    )
+
+    print(
+        "Joining segments"
+    )
+
+    join_segments()
+
+    print(
+        "Verifying final video"
+    )
+
+    verify()
+
+    print(
+        "Short generated successfully"
+    )
+
+
+if __name__ == "__main__":
+    main()
