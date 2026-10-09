@@ -3,7 +3,7 @@ name: AI Tiny World Shorts
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 0 * * *" # 06:00 IST daily
+    - cron: "30 0 * * *" # Daily at 06:00 IST
 
 permissions:
   contents: read
@@ -16,6 +16,7 @@ jobs:
   create-and-upload:
     runs-on: ubuntu-latest
     timeout-minutes: 300
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,7 +25,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
 
       - name: Install FFmpeg and fonts
         run: |
@@ -34,9 +34,10 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests pillow google-api-python-client google-auth google-auth-httplib2
+          python -m pip install requests pillow google-api-python-client google-auth google-auth-httplib2
 
       - name: Generate and upload Shorts
+        shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -44,31 +45,41 @@ jobs:
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           MAX_VIDEOS: "3"
-        shell: bash
         run: |
           SUCCESS=0
+
           for ((i=1; i<=MAX_VIDEOS; i++)); do
             echo "===== SHORT $i/$MAX_VIDEOS ====="
+
             rm -rf output
             rm -f story.json story.txt
             mkdir -p output
+
             if ! python scripts/generate_short.py; then
-              echo "Generation failed (Cloudflare limit/capacity or another error). Stopping."
+              echo "Video generation failed. Stopping."
               break
             fi
+
             if [[ ! -s output/final_short.mp4 ]]; then
-              echo "Video missing; stopping."
+              echo "Video file is missing. Stopping."
               break
             fi
+
             if ! python scripts/upload_youtube.py; then
-              echo "Upload failed (YouTube quota/authentication/etc.). Stopping."
+              echo "YouTube upload failed. Stopping."
               break
             fi
+
             SUCCESS=$((SUCCESS+1))
             echo "Successful uploads: $SUCCESS"
-            if (( i < MAX_VIDEOS )); then sleep 15; fi
+
+            if (( i < MAX_VIDEOS )); then
+              sleep 15
+            fi
           done
+
           echo "Run complete: $SUCCESS successful upload(s)."
+
       - name: Save generated Short and story
         if: always()
         uses: actions/upload-artifact@v4
