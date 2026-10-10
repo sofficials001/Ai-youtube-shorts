@@ -1,4 +1,4 @@
-name: AI Tiny World Shorts — Satisfying AI Video
+name: AI Satisfying Videos — Real AI Video
 
 on:
   workflow_dispatch:
@@ -25,20 +25,18 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install FFmpeg and fonts
+      - name: Install FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra
+          sudo apt-get install -y ffmpeg
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install requests pillow gradio_client google-api-python-client google-auth google-auth-httplib2
+          python -m pip install pillow gradio_client google-api-python-client google-auth google-auth-httplib2
 
-      - name: Generate one subtitle-free satisfying AI-video Short
+      - name: Generate one silent satisfying AI video
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
@@ -49,11 +47,11 @@ jobs:
           test -s output/final_short.mp4
           python scripts/upload_youtube.py
 
-      - name: Save generated Short and story
+      - name: Save generated video
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ai-satisfying-real-video-${{ github.run_number }}
+          name: ai-satisfying-video-${{ github.run_number }}
           path: |
             output/final_short.mp4
             story.json
