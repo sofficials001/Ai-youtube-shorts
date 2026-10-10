@@ -15,7 +15,7 @@ video=Path('output/final_short.mp4'); meta_file=Path('story.json')
 if not video.is_file() or video.stat().st_size==0 or not meta_file.is_file(): raise SystemExit('Video or story.json is missing.')
 meta=json.loads(meta_file.read_text(encoding='utf-8'))
 title=str(meta.get('title','Oddly Satisfying AI Visuals #Shorts'))[:95]
-description='A collection of oddly satisfying AI-generated visual moments. No voice-over, no subtitles—just visuals.\n\n#Shorts #OddlySatisfying #Satisfying #AIVideo #VisualASMR'
+description='Silent, subtitle-free AI-generated satisfying visuals.\n\n#Shorts #OddlySatisfying #Satisfying #AIVideo #VisualASMR'
 tags=['shorts','oddly satisfying','satisfying videos','AI video','visual ASMR','satisfying visuals','relaxing visuals']
 credentials=Credentials(token=None,refresh_token=secrets['YOUTUBE_REFRESH_TOKEN'],token_uri='https://oauth2.googleapis.com/token',client_id=secrets['YOUTUBE_CLIENT_ID'],client_secret=secrets['YOUTUBE_CLIENT_SECRET'],scopes=['https://www.googleapis.com/auth/youtube.upload'])
 credentials.refresh(Request()); youtube=build('youtube','v3',credentials=credentials,cache_discovery=False)
