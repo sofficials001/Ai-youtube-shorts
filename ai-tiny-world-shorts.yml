@@ -1,0 +1,62 @@
+name: AI Tiny World Shorts — Satisfying AI Video
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 0 * * *" # Daily at 06:00 IST
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-satisfying-real-video
+  cancel-in-progress: false
+
+jobs:
+  create-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg and fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-core fonts-noto-extra
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests pillow gradio_client google-api-python-client google-auth google-auth-httplib2
+
+      - name: Generate one subtitle-free satisfying AI-video Short
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          HF_SPACE_ID: "ysharma/wan2-1-fast"
+        run: |
+          set -euo pipefail
+          python scripts/generate_short.py
+          test -s output/final_short.mp4
+          python scripts/upload_youtube.py
+
+      - name: Save generated Short and story
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-satisfying-real-video-${{ github.run_number }}
+          path: |
+            output/final_short.mp4
+            story.json
+            story.txt
+          if-no-files-found: ignore
+          retention-days: 3
